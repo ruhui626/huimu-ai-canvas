@@ -76,6 +76,15 @@ const audioParams = [
   ["providerOptions", "object", false, "provider-specific fields", "插件命名空间内的厂商扩展字段。"]
 ];
 
+const minimaxSpeechParams = [
+  ["model", "string", true, "model", "MiniMax 语音模型 ID。"],
+  ["prompt", "string", true, "text", "要朗读的台词或旁白。"],
+  ["audioVoice", "string", true, "voice_setting.voice_id", "MiniMax 系统音色 ID。"],
+  ["audioSpeed", "number", false, "voice_setting.speed", "语速。"],
+  ["audioFormat", "string", false, "audio_setting.format", "非流式输出格式。"],
+  ["providerOptions", "object", false, "provider-specific fields", "插件命名空间内的厂商扩展字段。"]
+];
+
 const parameters = (items) => items.map(([name, type, required, mapping, description]) => ({ name, type, required, mapping, description }));
 const config = (extra = []) => ({
   fields: [
@@ -470,13 +479,13 @@ const arkSeedanceResponse = {
 };
 
 add({
-  id: "volcengine-ark-seedance", providerId: "volcengine-ark-video", name: "Volcengine Ark Seedance", vendor: "Volcengine", capability: "video",
-  baseUrl: "https://ark.cn-beijing.volces.com", auth: bearer, params: arkSeedanceParams, requiresPublicMediaUrls: true,
+  id: "volcengine-ark-seedance", providerId: "volcengine-ark-video", name: "Volcengine Ark Seedance", vendor: "Volcengine", capability: "video", version: "2.0.1",
+  baseUrl: "https://ark.cn-beijing.volces.com/api/v3", auth: bearer, params: arkSeedanceParams, requiresPublicMediaUrls: true,
   validations: arkSeedanceValidations,
-  notes: "官方 Ark 推理接入：创建/查询/取消走 /api/v3/contents/generations/tasks；插件不根据图片下标推断首尾帧，role 由业务层确定。API Key 来自方舟推理接入控制台。",
-  create: jsonCreate("/api/v3/contents/generations/tasks", arkSeedanceBody("volcengine-ark-video")),
-  poll: { method: "GET", path: "/api/v3/contents/generations/tasks/{{taskId}}" },
-  cancel: { method: "DELETE", path: "/api/v3/contents/generations/tasks/{{taskId}}" },
+  notes: "官方 Ark 推理接入：创建/查询/取消路径相对于渠道 Base URL，保留 Base URL 中的 /api/v3、/v1 等路径前缀；插件不根据图片下标推断首尾帧，role 由业务层确定。API Key 来自方舟推理接入控制台。",
+  create: jsonCreate("/contents/generations/tasks", arkSeedanceBody("volcengine-ark-video")),
+  poll: { method: "GET", path: "/contents/generations/tasks/{{taskId}}" },
+  cancel: { method: "DELETE", path: "/contents/generations/tasks/{{taskId}}" },
   response: arkSeedanceResponse
 });
 
@@ -600,6 +609,45 @@ add({
     audios: coalesce(ref("response.audio_url"), ref("response.audioUrl"), ref("response.result_url"), ref("response.url"), ref("response.data.audio_url"), ref("response.output.url")),
     errorPaths: ["error.code"], messagePaths: ["error.message"]
   })
+});
+
+add({
+  id: "minimax-speech", providerId: "minimax-speech", name: "MiniMax 语音合成", vendor: "MiniMax", capability: "audio",
+  baseUrl: "https://api.minimax.cn", auth: bearer, params: minimaxSpeechParams,
+  notes: "使用 MiniMax T2A HTTP 非流式接口。返回的临时音频 URL 由宿主立即下载并保存；仅支持 mp3、wav、flac。",
+  create: jsonCreate("/v1/t2a_v2", {
+    model: ref("request.model"),
+    text: ref("request.prompt"),
+    stream: false,
+    output_format: "url",
+    voice_setting: {
+      voice_id: conditional(
+        and(ref("request.extra.audioVoice"), ne(ref("request.extra.audioVoice"), "alloy")),
+        ref("request.extra.audioVoice"),
+        coalesce(ref("request.providerOptions.minimax-speech.voice_id"), "male-qn-qingse")
+      ),
+      speed: coalesce(nonZeroFloat(ref("request.extra.audioSpeed")), ref("request.providerOptions.minimax-speech.speed"), 1),
+      vol: 1,
+      pitch: 0
+    },
+    audio_setting: {
+      format: conditional(
+        { $in: [lower(ref("request.extra.audioFormat")), ["mp3", "wav", "flac"]] },
+        lower(ref("request.extra.audioFormat")),
+        coalesce(ref("request.providerOptions.minimax-speech.format"), "mp3")
+      ),
+      sample_rate: 32000,
+      bitrate: 128000,
+      channel: 1
+    }
+  }),
+  response: {
+    status: "succeeded",
+    audios: ref("response.data.audio"),
+    errorPaths: ["base_resp.status_code"],
+    messagePaths: ["base_resp.status_msg"],
+    resultEphemeral: true
+  }
 });
 
 add({
@@ -1155,10 +1203,10 @@ function manifestFor(spec) {
     apiVersion: "yingce.plugin/v2",
     id: spec.id,
     name: spec.name,
-    version: "2.0.0",
-    author: `${spec.vendor} / 影策`,
+    version: spec.version || "2.0.0",
+    author: `${spec.vendor} / 绘幕`,
     description: `${spec.name} 独立请求协议插件。`,
-    documentation: `# ${spec.name}\n\n完整字段、映射、响应、鉴权和兼容边界见包内 README.md 与 docs/interface.md。\n\n## 影策运行时合同\n\n用户只操作统一的文本、图片或视频能力；插件负责把统一请求转换为 ${spec.name} 上游协议。`,
+    documentation: `# ${spec.name}\n\n完整字段、映射、响应、鉴权和兼容边界见包内 README.md 与 docs/interface.md。\n\n## 绘幕运行时合同\n\n用户只操作统一的文本、图片或视频能力；插件负责把统一请求转换为 ${spec.name} 上游协议。`,
     permissions: ["generation.run", "media.read"],
     configuration: spec.configuration || config(),
     contributes: {

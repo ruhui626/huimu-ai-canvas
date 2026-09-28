@@ -14,6 +14,17 @@ export const audioVoiceOptions = [
     { value: "cedar", label: "Cedar" },
 ];
 
+export const minimaxVoiceOptions = [
+    { value: "male-qn-qingse", label: "青涩青年" },
+    { value: "male-qn-jingying", label: "精英青年" },
+    { value: "male-qn-badao", label: "霸道青年" },
+    { value: "male-qn-daxuesheng", label: "青年大学生" },
+    { value: "female-shaonv", label: "少女" },
+    { value: "female-yujie", label: "御姐" },
+    { value: "female-chengshu", label: "成熟女性" },
+    { value: "female-tianmei", label: "甜美女性" },
+];
+
 export const audioFormatOptions = [
     { value: "mp3", label: "MP3" },
     { value: "wav", label: "WAV" },
@@ -22,6 +33,28 @@ export const audioFormatOptions = [
     { value: "flac", label: "FLAC" },
     { value: "pcm", label: "PCM" },
 ];
+
+export function isMiniMaxSpeech(interfaceType?: string) {
+    return interfaceType === "minimax-speech";
+}
+
+export function audioVoiceOptionsFor(interfaceType?: string) {
+    return isMiniMaxSpeech(interfaceType) ? minimaxVoiceOptions : audioVoiceOptions;
+}
+
+export function audioFormatOptionsFor(interfaceType?: string) {
+    return isMiniMaxSpeech(interfaceType) ? audioFormatOptions.filter((item) => ["mp3", "wav", "flac"].includes(item.value)) : audioFormatOptions;
+}
+
+export function audioVoiceFor(value: string, interfaceType?: string) {
+    const options = audioVoiceOptionsFor(interfaceType);
+    return options.some((item) => item.value === value) ? value : options[0].value;
+}
+
+export function audioFormatFor(value: string, interfaceType?: string) {
+    const options = audioFormatOptionsFor(interfaceType);
+    return options.some((item) => item.value === value) ? value : "mp3";
+}
 
 export function normalizeAudioVoiceValue(value: string) {
     return audioVoiceOptions.some((item) => item.value === value) ? value : "alloy";
@@ -38,8 +71,7 @@ export function normalizeAudioSpeedValue(value: string) {
 }
 
 export function audioVoiceLabel(value: string) {
-    const voice = normalizeAudioVoiceValue(value);
-    return audioVoiceOptions.find((item) => item.value === voice)?.label || voice;
+    return [...audioVoiceOptions, ...minimaxVoiceOptions].find((item) => item.value === value)?.label || value;
 }
 
 export function audioFormatLabel(value: string) {

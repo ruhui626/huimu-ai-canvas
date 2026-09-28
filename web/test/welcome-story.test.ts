@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { chapters, getWelcomeLook, showcases, welcomeLooks } from "../src/pages/welcome/story";
+import { chapters, getWelcomeLook, welcomeLooks } from "../src/pages/welcome/story";
 
 const publicFile = (url: string) => resolve(import.meta.dir, "../public", url.replace(/^\//, ""));
 
 describe("welcome story", () => {
-    test("uses Yingce and only the three approved looks", () => {
-        expect(chapters[0].title).toBe("影策");
+    test("uses Huimu and only the three approved looks", () => {
+        expect(chapters[0].title).toBe("绘幕");
         expect(welcomeLooks.map((look) => look.id)).toEqual(["spring", "charge", "wing-it"]);
         expect(getWelcomeLook("").id).toBe("spring");
         expect(getWelcomeLook("?look=unknown").id).toBe("spring");
@@ -23,7 +23,16 @@ describe("welcome story", () => {
             if (look.video) expect(existsSync(publicFile(look.video))).toBe(true);
         }
         expect(welcomeLooks.filter((look) => look.video).map((look) => look.id)).toEqual(["charge"]);
-        for (const showcase of showcases) expect(existsSync(publicFile(showcase.image))).toBe(true);
+    });
+
+    test("welcome page omits workbench, contributors, and GitHub entry points", async () => {
+        const source = await Bun.file(new URL("../src/pages/welcome/index.tsx", import.meta.url)).text();
+
+        expect(source).not.toContain('href="#workbench"');
+        expect(source).not.toContain('href="#contributors"');
+        expect(source).not.toContain("WelcomeContributorsCard");
+        expect(source).not.toContain("ddcat-ai/open-ai-canvas");
+        expect(source).not.toContain("workbench-preview");
     });
 
     test("credits cover all looks separately from the code license", () => {

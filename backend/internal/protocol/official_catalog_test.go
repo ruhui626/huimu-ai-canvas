@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -601,6 +602,33 @@ func TestOfficialArkSeedreamMapsAspectRatioToPixelSize(t *testing.T) {
 	}
 }
 
+func TestOfficialArkSeedanceUsesBaseRelativeTaskPaths(t *testing.T) {
+	adapter := officialPackageAdapter(t, "volcengine-ark-seedance.yingce-plugin", "volcengine-ark-video")
+	create, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{Model: "doubao-seedance-2-0-260128", Prompt: "walk"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if create.Path != "/contents/generations/tasks" {
+		t.Fatalf("Seedance create path = %q", create.Path)
+	}
+
+	poll, err := adapter.BuildPoll(context.Background(), PollContext{TaskID: "task-1", Model: "doubao-seedance-2-0-260128"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if poll.Path != "/contents/generations/tasks/task-1" {
+		t.Fatalf("Seedance poll path = %q", poll.Path)
+	}
+
+	cancel, err := adapter.BuildCancel(context.Background(), PollContext{TaskID: "task-1", Model: "doubao-seedance-2-0-260128"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cancel.Method != http.MethodDelete || cancel.Path != "/contents/generations/tasks/task-1" {
+		t.Fatalf("Seedance cancel = %#v", cancel)
+	}
+}
+
 func TestOfficialArkAgentPlanPluginsUsePlanPaths(t *testing.T) {
 	image := officialPackageAdapter(t, "volcengine-ark-agent-plan-seedream.yingce-plugin", "volcengine-ark-agent-plan-image")
 	imageCreate, err := image.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{Model: "doubao-seedream-5-0-260128", Prompt: "circle", AspectRatio: "1:1"}})
@@ -784,6 +812,67 @@ func TestOfficialOpenAIAudioSpeedDefaultsInvalidAndZeroValues(t *testing.T) {
 				t.Fatalf("speed = %#v, want %v", got, test.want)
 			}
 		})
+	}
+}
+
+func TestOfficialMiniMaxSpeechMapsRequestAndResponse(t *testing.T) {
+	adapter := officialPackageAdapter(t, "minimax-speech.yingce-plugin", "minimax-speech")
+	spec, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model:  "speech-02-hd",
+		Prompt: "请读出这句话",
+		Extra: map[string]any{
+			"audioVoice":  "female-yujie",
+			"audioSpeed":  "1.25",
+			"audioFormat": "flac",
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := manifestTestBody(t, spec)
+	if body["model"] != "speech-02-hd" || body["text"] != "请读出这句话" || body["stream"] != false || body["output_format"] != "url" {
+		t.Fatalf("MiniMax request body = %#v", body)
+	}
+	voice, _ := body["voice_setting"].(map[string]any)
+	if voice["voice_id"] != "female-yujie" || voice["speed"] != 1.25 || voice["vol"] != float64(1) || voice["pitch"] != float64(0) {
+		t.Fatalf("MiniMax voice_setting = %#v", voice)
+	}
+	audio, _ := body["audio_setting"].(map[string]any)
+	if audio["format"] != "flac" || audio["sample_rate"] != float64(32000) || audio["bitrate"] != float64(128000) || audio["channel"] != float64(1) {
+		t.Fatalf("MiniMax audio_setting = %#v", audio)
+	}
+
+	created, err := adapter.ParseCreate(context.Background(), []byte(`{"data":{"audio":"https://cdn.example/speech.mp3"},"base_resp":{"status_code":0,"status_msg":"success"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Status != StatusSucceeded || created.Result == nil || len(created.Result.Audios) != 1 || created.Result.Audios[0].URL != "https://cdn.example/speech.mp3" || !created.Result.Audios[0].Ephemeral {
+		t.Fatalf("MiniMax success response = %#v", created)
+	}
+
+	failed, err := adapter.ParseCreate(context.Background(), []byte(`{"base_resp":{"status_code":1008,"status_msg":"insufficient balance"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.Status != StatusFailed || failed.Message != "insufficient balance" {
+		t.Fatalf("MiniMax failure response = %#v", failed)
+	}
+}
+
+func TestOfficialMiniMaxSpeechDefaultsLegacyAudioSettings(t *testing.T) {
+	adapter := officialPackageAdapter(t, "minimax-speech.yingce-plugin", "minimax-speech")
+	spec, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "speech-02-hd", Prompt: "hello",
+		Extra: map[string]any{"audioVoice": "alloy", "audioSpeed": "0", "audioFormat": "opus"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := manifestTestBody(t, spec)
+	voice, _ := body["voice_setting"].(map[string]any)
+	audio, _ := body["audio_setting"].(map[string]any)
+	if voice["voice_id"] != "male-qn-qingse" || voice["speed"] != float64(1) || audio["format"] != "mp3" {
+		t.Fatalf("MiniMax defaults = voice:%#v audio:%#v", voice, audio)
 	}
 }
 

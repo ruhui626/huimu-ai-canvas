@@ -39,12 +39,12 @@ const (
 )
 
 const (
-	defaultAppearanceBrandName = "影策"
+	defaultAppearanceBrandName = "绘幕"
 	defaultAppearanceBrandSlug = "open-ai-canvas"
 	defaultAppearanceSkinID    = "classic"
 	defaultAppearanceLogoURL   = "/logo.svg"
-	defaultAppearanceVideoURL  = "https://boss-shjd.biliapi.net/updream/aniforge/video/video_bbcb00bd-650d-4249-9346-5cd21fd2484c_m1hc-u0-1pu13x-3v1s.mp4"
-	defaultAppearancePosterURL = "https://i0.hdslb.com/bfs/aitool/aniforge/image/02933f26-5f1b-49ff-a811-b7f95ee5e5b8_m1hc-u0-sau.jpg"
+	defaultAppearanceVideoURL  = "/auth-brand-video.mp4"
+	defaultAppearancePosterURL = "/sau.jpg"
 	defaultAppearanceHeroTitle = "让一个故事，\n从文字走向银幕。"
 )
 
@@ -259,7 +259,7 @@ func (s *Service) ResetAppearance(actor *model.User) (*AdminAppearanceSetting, e
 		return nil, err
 	}
 	after := defaultAppearanceSetting()
-	if err := s.appendAdminAudit(actor, "appearance.reset", "system_setting", appearanceSettingKey, "恢复影策默认品牌标识", map[string]any{"before": before, "after": after}); err != nil {
+	if err := s.appendAdminAudit(actor, "appearance.reset", "system_setting", appearanceSettingKey, "恢复绘幕默认品牌标识", map[string]any{"before": before, "after": after}); err != nil {
 		return nil, err
 	}
 	return s.AdminAppearance(actor)
@@ -703,11 +703,6 @@ func publicAppearanceSetting(setting *model.SystemSetting, value AppearanceSetti
 	if value.AuthVideoResourceID != "" {
 		result.AuthVideoConfigured = true
 		result.AuthVideoURL = appearanceAssetURL(AppearanceAssetVideo, revision)
-		if value.AuthVideoPosterResourceID == "" {
-			// A custom video must not briefly reveal the built-in poster while its
-			// first frame loads. An optional custom poster may be configured below.
-			result.AuthVideoPosterURL = ""
-		}
 	}
 	if value.AuthVideoPosterResourceID != "" {
 		result.AuthVideoPosterConfigured = true

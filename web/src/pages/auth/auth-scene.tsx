@@ -1,13 +1,13 @@
 import { motion, useReducedMotion } from "motion/react";
 import { Tabs } from "antd";
-import { ArrowLeft, Play } from "lucide-react";
+import { ArrowLeft, Play, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 
 import { BrandLogo } from "@/components/brand/brand-logo";
 import { SiteComplianceFooter } from "@/components/layout/site-compliance-footer";
 import { aceternityMotion } from "@/lib/aceternity-motion";
-import { brandStudioLabel, useAppearanceStore } from "@/stores/use-appearance-store";
+import { brandStudioLabel, DEFAULT_PUBLIC_APPEARANCE, useAppearanceStore } from "@/stores/use-appearance-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 
 const AUTH_TABS = [
@@ -53,32 +53,105 @@ export function AuthScene() {
     const navigate = useNavigate();
     const reducedMotion = useReducedMotion();
     const videoRef = useRef<HTMLVideoElement>(null);
-    const [manualVideoActive, setManualVideoActive] = useState(false);
     const [videoPlaying, setVideoPlaying] = useState(false);
+    const [videoMuted, setVideoMuted] = useState(true);
+    const [videoFailed, setVideoFailed] = useState(false);
+    const [autoplayBlocked, setAutoplayBlocked] = useState(false);
     const [failedPosterURL, setFailedPosterURL] = useState("");
     const recovery = location.pathname === "/forgot-password";
     const activeTab = location.pathname === "/register" ? "register" : "login";
     const copy = recovery ? authCopy.recovery : activeTab === "register" ? authCopy.register : authCopy.login;
     const automaticVideoActive = appearance.authVideoAutoplay && !reducedMotion;
-    const videoActive = Boolean(appearance.authVideoUrl && (automaticVideoActive || manualVideoActive));
+    const videoAvailable = Boolean(appearance.authVideoUrl && !videoFailed);
+    const posterURL =
+        appearance.authVideoPosterUrl && failedPosterURL !== appearance.authVideoPosterUrl
+            ? appearance.authVideoPosterUrl
+            : appearance.authVideoPosterUrl !== DEFAULT_PUBLIC_APPEARANCE.authVideoPosterUrl && failedPosterURL !== DEFAULT_PUBLIC_APPEARANCE.authVideoPosterUrl
+              ? DEFAULT_PUBLIC_APPEARANCE.authVideoPosterUrl
+              : "";
 
     useEffect(() => {
-        setManualVideoActive(false);
         setVideoPlaying(false);
+        setVideoMuted(true);
+        setVideoFailed(false);
+        setAutoplayBlocked(false);
     }, [appearance.authVideoUrl, appearance.authVideoAutoplay]);
 
+    useEffect(() => {
+        setFailedPosterURL("");
+    }, [appearance.authVideoPosterUrl]);
+
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!videoAvailable || !video) return;
+        if (!automaticVideoActive) {
+            video.pause();
+            return;
+        }
+
+        let current = true;
+        void video.play().then(
+            () => {
+                if (current) setAutoplayBlocked(false);
+            },
+            () => {
+                if (!current) return;
+                setVideoPlaying(false);
+                setAutoplayBlocked(true);
+            },
+        );
+        return () => {
+            current = false;
+        };
+    }, [appearance.authVideoUrl, automaticVideoActive, videoAvailable]);
+
     const playVideo = () => {
-        setManualVideoActive(true);
-        requestAnimationFrame(() => {
-            void videoRef.current?.play().catch(() => setVideoPlaying(false));
-        });
+        void videoRef.current?.play().then(
+            () => setAutoplayBlocked(false),
+            () => {
+                setVideoPlaying(false);
+                setAutoplayBlocked(true);
+            },
+        );
+    };
+
+    const toggleVideoMuted = () => {
+        const video = videoRef.current;
+        if (!video) return;
+        const nextMuted = !video.muted;
+        video.muted = nextMuted;
+        setVideoMuted(nextMuted);
     };
 
     return (
         <main className="auth-scene h-dvh min-h-0 overflow-y-auto lg:overflow-hidden">
             <div className="grid min-h-full lg:h-full lg:grid-cols-[minmax(0,1.32fr)_minmax(520px,1fr)]">
                 <section className="auth-scene-hero relative min-h-[250px] overflow-hidden sm:min-h-[320px] lg:min-h-0" aria-label={`${appearance.brandName}品牌影片`}>
-                    {videoActive && appearance.authVideoUrl ? <video ref={videoRef} className="absolute inset-0 size-full object-cover" src={appearance.authVideoUrl} poster={appearance.authVideoPosterUrl || undefined} autoPlay muted loop playsInline preload="metadata" onPlay={() => setVideoPlaying(true)} onPause={() => setVideoPlaying(false)} /> : appearance.authVideoPosterUrl && failedPosterURL !== appearance.authVideoPosterUrl ? <img className="absolute inset-0 size-full object-cover" src={appearance.authVideoPosterUrl} alt="" decoding="async" onError={() => setFailedPosterURL(appearance.authVideoPosterUrl)} /> : null}
+                    {videoAvailable && appearance.authVideoUrl ? (
+                        <video
+                            ref={videoRef}
+                            className="absolute inset-0 size-full object-cover"
+                            src={appearance.authVideoUrl}
+                            poster={posterURL || undefined}
+                            autoPlay={automaticVideoActive}
+                            muted={videoMuted}
+                            loop
+                            playsInline
+                            preload="metadata"
+                            onPlay={() => {
+                                setVideoPlaying(true);
+                                setAutoplayBlocked(false);
+                            }}
+                            onPause={() => setVideoPlaying(false)}
+                            onError={() => {
+                                setVideoFailed(true);
+                                setVideoPlaying(false);
+                                setAutoplayBlocked(false);
+                            }}
+                        />
+                    ) : posterURL ? (
+                        <img className="absolute inset-0 size-full object-cover" src={posterURL} alt="" decoding="async" onError={() => setFailedPosterURL(posterURL)} />
+                    ) : null}
                     <div aria-hidden className="auth-scene-hero-overlay absolute inset-0" />
                     <div aria-hidden className="auth-scene-video-blend absolute inset-y-0 right-0 hidden w-[clamp(120px,14vw,240px)] lg:block" />
                     <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-4 p-5 sm:p-7 lg:p-9">
@@ -86,10 +159,37 @@ export function AuthScene() {
                             <BrandLogo theme={theme} className="size-7" alt="" fallback={<span className="size-7 bg-current" style={{ mask: "url(/logo.svg) center / contain no-repeat", WebkitMask: "url(/logo.svg) center / contain no-repeat" }} />} />
                             {appearance.brandName}
                         </Link>
-                        <button type="button" className="auth-scene-hero-control inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[var(--fs-label)] backdrop-blur-xl transition disabled:cursor-default" onClick={playVideo} disabled={videoPlaying || !appearance.authVideoUrl} aria-pressed={videoPlaying}>
-                            <Play className="size-3 fill-current" />
-                            {videoPlaying ? "创作正在发生" : "播放品牌影片"}
-                        </button>
+                        <div className="flex items-center gap-2">
+                            {videoPlaying && videoAvailable ? (
+                                <button
+                                    type="button"
+                                    className="auth-scene-hero-control inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[var(--fs-label)] backdrop-blur-xl transition"
+                                    onClick={toggleVideoMuted}
+                                    aria-label={videoMuted ? "取消静音" : "静音"}
+                                    aria-pressed={!videoMuted}
+                                >
+                                    {videoMuted ? <VolumeX className="size-3.5" /> : <Volume2 className="size-3.5" />}
+                                    {videoMuted ? "开启声音" : "静音"}
+                                </button>
+                            ) : null}
+                            {!videoPlaying && appearance.authVideoUrl && !videoFailed ? (
+                                <button
+                                    type="button"
+                                    className="auth-scene-hero-control inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[var(--fs-label)] backdrop-blur-xl transition"
+                                    onClick={playVideo}
+                                    aria-label={autoplayBlocked ? "浏览器阻止了自动播放，播放视频" : "播放视频"}
+                                    title={autoplayBlocked ? "浏览器阻止了自动播放，请点击继续" : undefined}
+                                >
+                                    <Play className="size-3 fill-current" />
+                                    播放视频
+                                </button>
+                            ) : null}
+                            {videoFailed ? (
+                                <span role="status" className="auth-scene-hero-control inline-flex items-center rounded-full px-3 py-1.5 text-[var(--fs-label)] backdrop-blur-xl">
+                                    视频暂时无法播放
+                                </span>
+                            ) : null}
+                        </div>
                     </div>
                     <motion.div
                         initial={reducedMotion ? false : { opacity: 0, y: 18 }}

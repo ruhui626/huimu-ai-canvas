@@ -5,14 +5,14 @@ import { appearanceLogoURL, normalizePublicAppearance } from "../src/stores/use-
 test("initial HTML stays brand neutral until the public appearance is resolved", async () => {
     const [html, mainSource] = await Promise.all([Bun.file(new URL("../index.html", import.meta.url)).text(), Bun.file(new URL("../src/main.tsx", import.meta.url)).text()]);
 
-    expect(html).not.toContain("影策");
+    expect(html).not.toContain("绘幕");
     expect(html).toContain("<title>正在加载</title>");
     expect(mainSource).toContain("bootstrapAppearance()");
     expect(mainSource).toContain('import("./application")');
     expect(mainSource.indexOf("bootstrapAppearance()")).toBeLessThan(mainSource.indexOf('import("./application")'));
 });
 
-test("a custom login video never falls back to the built-in poster", () => {
+test("a custom login video keeps the local poster when no custom poster is configured", () => {
     const appearance = normalizePublicAppearance({
         brandName: "HIMA Studio",
         brandSlug: "hima-studio",
@@ -28,13 +28,26 @@ test("a custom login video never falls back to the built-in poster", () => {
     expect(appearance.brandSlug).toBe("hima-studio");
     expect(appearance.authHeroTitle).toBe("把灵感，\n变成可见的故事。");
     expect(appearance.authHeroDescription).toBe("从同一个创作空间持续推进。");
-    expect(appearance.authVideoPosterUrl).toBe("");
+    expect(appearance.authVideoPosterUrl).toBe("/sau.jpg");
     expect(appearance.authVideoAutoplay).toBe(true);
 });
 
 test("login video autoplay defaults on and can be disabled explicitly", () => {
-    expect(normalizePublicAppearance({}).authVideoAutoplay).toBe(true);
+    const defaults = normalizePublicAppearance({});
+    expect(defaults.authVideoUrl).toBe("/auth-brand-video.mp4");
+    expect(defaults.authVideoPosterUrl).toBe("/sau.jpg");
+    expect(defaults.authVideoAutoplay).toBe(true);
     expect(normalizePublicAppearance({ authVideoAutoplay: false }).authVideoAutoplay).toBe(false);
+});
+
+test("bundled login video and poster are present", async () => {
+    const video = Bun.file(new URL("../public/auth-brand-video.mp4", import.meta.url));
+    const poster = Bun.file(new URL("../public/sau.jpg", import.meta.url));
+
+    expect(await video.exists()).toBe(true);
+    expect(video.size).toBeGreaterThan(0);
+    expect(await poster.exists()).toBe(true);
+    expect(poster.size).toBeGreaterThan(0);
 });
 
 test("appearance URLs reject executable and insecure remote schemes", () => {
@@ -72,7 +85,15 @@ test("auth scene consumes resolved appearance instead of hardcoded media constan
 
     expect(source).toContain("appearance.authVideoUrl");
     expect(source).toContain("appearance.authVideoAutoplay");
-    expect(source).toContain("appearance.authVideoPosterUrl || undefined");
+    expect(source).toContain("poster={posterURL || undefined}");
+    expect(source).toContain("DEFAULT_PUBLIC_APPEARANCE.authVideoPosterUrl");
+    expect(source).toContain("muted={videoMuted}");
+    expect(source).toContain("playsInline");
+    expect(source).toContain('preload="metadata"');
+    expect(source).toContain("setAutoplayBlocked(true)");
+    expect(source).toContain("setVideoFailed(true)");
+    expect(source).toContain("toggleVideoMuted");
+    expect(source).toContain("播放视频");
     expect(source).toContain("appearance.brandName");
     expect(source).toContain("appearance.authHeroTitle");
     expect(source).toContain("appearance.authHeroDescription");
@@ -121,10 +142,10 @@ test("object storage can adopt the configured English brand identifier without r
     expect(source).toContain("setting.pathPrefix || DEFAULT_OSS_PATH_PREFIX");
 });
 
-test("appearance management exposes a server-side reset to the built-in Yingce brand", async () => {
+test("appearance management exposes a server-side reset to the built-in Huimu brand", async () => {
     const [pageSource, apiSource] = await Promise.all([Bun.file(new URL("../src/pages/admin/settings/appearance-settings-page.tsx", import.meta.url)).text(), Bun.file(new URL("../src/services/api/appearance.ts", import.meta.url)).text()]);
 
-    expect(pageSource).toContain("恢复影策默认");
+    expect(pageSource).toContain("恢复绘幕默认");
     expect(pageSource).toContain("resetAdminAppearance()");
     expect(pageSource).toContain("已上传文件仍保留在存储资源中");
     expect(apiSource).toContain('http.delete<{ setting: AdminAppearance }>("/admin/settings/appearance")');

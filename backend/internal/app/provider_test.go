@@ -24,6 +24,21 @@ import (
 const testReferenceImageDataURL = "data:image/png;base64,aGVsbG8="
 const testGeminiReferenceImageDataURL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
 
+func TestProtocolRequestFromInputIncludesAudioSettings(t *testing.T) {
+	request := protocolRequestFromInput(canvasGenerationInput{
+		Mode: "audio",
+		Config: providerConfig{
+			AudioVoice:        "female-yujie",
+			AudioFormat:       "flac",
+			AudioSpeed:        "1.25",
+			AudioInstructions: "温暖、自然",
+		},
+	})
+	if request.Extra["audioVoice"] != "female-yujie" || request.Extra["audioFormat"] != "flac" || request.Extra["audioSpeed"] != "1.25" || request.Extra["audioInstructions"] != "温暖、自然" {
+		t.Fatalf("audio request extras = %#v", request.Extra)
+	}
+}
+
 func officialVideoCreateBody(t *testing.T, input canvasGenerationInput) map[string]any {
 	t.Helper()
 	adapter, ok := loadOfficialFallbackRegistry().Resolve(strings.TrimSpace(input.Config.InterfaceType))
@@ -120,6 +135,8 @@ func TestChannelAPIURLNormalizesConfiguredVersionPrefix(t *testing.T) {
 		{name: "ark v3", base: "https://ark.example.com/api/v3", path: "/images/generations", want: "https://ark.example.com/api/v3/images/generations"},
 		{name: "ark v3 chat", base: "https://ark.example.com/api/v3", path: "/chat/completions", want: "https://ark.example.com/api/v3/chat/completions"},
 		{name: "ark v3 responses", base: "https://ark.example.com/api/v3", path: "/responses", want: "https://ark.example.com/api/v3/responses"},
+		{name: "seedance official ark v3", base: "https://ark.cn-beijing.volces.com/api/v3", path: "/contents/generations/tasks", want: "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks"},
+		{name: "seedance compatible v1", base: "https://ai.ctaigw.cn/v1", path: "/contents/generations/tasks", want: "https://ai.ctaigw.cn/v1/contents/generations/tasks"},
 		{name: "path carries ark v3", base: "https://ark.example.com", path: "/api/v3/images/generations", want: "https://ark.example.com/api/v3/images/generations"},
 		{name: "path carries autodl api v1", base: "https://autodl.art", path: "/api/v1/comfyui/comfyui_workflow/workflow-1", want: "https://autodl.art/api/v1/comfyui/comfyui_workflow/workflow-1"},
 	}

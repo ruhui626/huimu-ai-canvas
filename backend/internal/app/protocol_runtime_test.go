@@ -653,6 +653,50 @@ func TestDeclarativeMiniMaxFailureReachesTaskError(t *testing.T) {
 	}
 }
 
+func TestDeclarativeMiniMaxSpeechDownloadsEphemeralAudio(t *testing.T) {
+	allowLoopbackProviderTest(t)
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "plugin-packages", "minimax-speech.yingce-plugin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg, err := protocol.ParsePluginPackage(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapters, err := protocol.LoadInstalledProviders(pkg.ManifestRaw, nil)
+	if err != nil || len(adapters) != 1 {
+		t.Fatalf("load MiniMax speech adapter: count=%d, error=%v", len(adapters), err)
+	}
+
+	createCalls, downloadCalls := 0, 0
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/t2a_v2":
+			createCalls++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":{"audio":"` + server.URL + `/speech.mp3"},"base_resp":{"status_code":0,"status_msg":"success"}}`))
+		case "/speech.mp3":
+			downloadCalls++
+			w.Header().Set("Content-Type", "audio/mpeg")
+			_, _ = w.Write([]byte("ID3fake-mp3"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	config := providerConfig{BaseURL: server.URL, APIKey: "test-key", Model: "speech-02-hd", InterfaceType: "minimax-speech", AudioVoice: "female-yujie", AudioFormat: "mp3", AudioSpeed: "1.25"}
+	result, err := runProtocolAdapterTask(context.Background(), canvasGenerationInput{Mode: "audio", Prompt: "请读出这句话", Config: config}, adapters[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	audio, _ := result["audio"].(map[string]interface{})
+	if result["mode"] != "audio" || !strings.HasPrefix(stringField(audio, "dataUrl"), "data:audio/mpeg;base64,") || createCalls != 1 || downloadCalls != 1 {
+		t.Fatalf("result=%#v, create calls=%d, download calls=%d", result, createCalls, downloadCalls)
+	}
+}
+
 func TestProviderTaskNotReadyStrictClassification(t *testing.T) {
 	tests := []struct {
 		name string

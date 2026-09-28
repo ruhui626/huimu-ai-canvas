@@ -1,9 +1,10 @@
-import { audioMimeType, normalizeAudioFormatValue, normalizeAudioSpeedValue, normalizeAudioVoiceValue } from "@/lib/audio-generation";
+import { audioFormatFor, audioMimeType, audioVoiceFor, normalizeAudioFormatValue, normalizeAudioSpeedValue, normalizeAudioVoiceValue } from "@/lib/audio-generation";
 import { createChannelTransport } from "@/services/api/channel-transport";
 import { uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { buildApiUrl, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 
 type RequestOptions = { signal?: AbortSignal };
+type AudioRequestConfig = ReturnType<typeof resolveModelRequestConfig>;
 
 function aiApiUrl(config: AiConfig, path: string) {
     return buildApiUrl(config.baseUrl, path);
@@ -17,6 +18,9 @@ export async function requestAudioGeneration(config: AiConfig, prompt: string, o
     const requestConfig = resolveModelRequestConfig(config, config.model || config.audioModel);
     const model = requestConfig.model.trim();
     assertAudioConfig(requestConfig, model);
+    if (requestConfig.interfaceType === "minimax-speech") {
+        return requestMiniMaxSpeech(requestConfig, prompt, options);
+    }
     const format = normalizeAudioFormatValue(config.audioFormat);
     const instructions = config.audioInstructions.trim();
     const payload = {
@@ -37,6 +41,38 @@ export async function requestAudioGeneration(config: AiConfig, prompt: string, o
         return blob.type.startsWith("audio/") ? blob : new Blob([blob], { type: audioMimeType(format) });
     } catch (error) {
         throw new Error(readAxiosError(error, "音频生成失败"));
+    }
+}
+
+async function requestMiniMaxSpeech(config: AudioRequestConfig, prompt: string, options?: RequestOptions): Promise<Blob> {
+    const format = audioFormatFor(config.audioFormat, config.interfaceType);
+    try {
+        const transport = audioTransport(config);
+        const response = await transport.postJson<{ data?: { audio?: string }; base_resp?: { status_code?: number; status_msg?: string } }>(
+            aiApiUrl(config, "/v1/t2a_v2"),
+            {
+                model: config.model,
+                text: prompt,
+                stream: false,
+                output_format: "url",
+                voice_setting: {
+                    voice_id: audioVoiceFor(config.audioVoice, config.interfaceType),
+                    speed: Number(normalizeAudioSpeedValue(config.audioSpeed)),
+                    vol: 1,
+                    pitch: 0,
+                },
+                audio_setting: { format, sample_rate: 32000, bitrate: 128000, channel: 1 },
+            },
+            options,
+        );
+        if (response.base_resp?.status_code !== 0) throw new Error(response.base_resp?.status_msg || "MiniMax 语音生成失败");
+        const audioUrl = response.data?.audio;
+        if (!audioUrl || !/^https:\/\//i.test(audioUrl)) throw new Error("MiniMax 没有返回音频地址");
+        const blob = await transport.getExternalBlob(audioUrl, undefined, options);
+        await assertAudioBlob(blob);
+        return blob.type.startsWith("audio/") ? blob : new Blob([blob], { type: audioMimeType(format) });
+    } catch (error) {
+        throw new Error(readAxiosError(error, "MiniMax 语音生成失败"));
     }
 }
 

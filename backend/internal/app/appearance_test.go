@@ -35,6 +35,9 @@ func TestAppearanceDefaultsPreserveBuiltInBrand(t *testing.T) {
 	if appearance.LogoConfigured || appearance.DarkLogoConfigured || appearance.AuthVideoConfigured || appearance.AuthVideoPosterConfigured || appearance.Revision != "builtin" {
 		t.Fatalf("Appearance() configured state = %#v", appearance)
 	}
+	if appearance.AuthVideoURL != "/auth-brand-video.mp4" || appearance.AuthVideoPosterURL != "/sau.jpg" {
+		t.Fatalf("Appearance() local auth media = video %q, poster %q", appearance.AuthVideoURL, appearance.AuthVideoPosterURL)
+	}
 	if appearance.ActiveSkin.ID != defaultAppearanceSkinID || !appearance.ActiveSkin.Locked {
 		t.Fatalf("Appearance() active skin = %#v", appearance.ActiveSkin)
 	}
@@ -47,6 +50,19 @@ func TestAppearanceDefaultsPreserveBuiltInBrand(t *testing.T) {
 	}
 	if len(adminAppearance.SkinThemes) != 4 || !adminAppearance.SkinThemes[0].Locked {
 		t.Fatalf("AdminAppearance() skin library = %#v", adminAppearance.SkinThemes)
+	}
+}
+
+func TestPublicAppearanceCustomVideoKeepsLocalPosterFallback(t *testing.T) {
+	value := defaultAppearanceSetting()
+	value.AuthVideoResourceID = "brand-video"
+
+	appearance := publicAppearanceSetting(nil, value)
+	if !appearance.AuthVideoConfigured || appearance.AuthVideoPosterConfigured {
+		t.Fatalf("public appearance configured state = %#v", appearance)
+	}
+	if !strings.HasPrefix(appearance.AuthVideoURL, "/api/public/appearance/assets/video?") || appearance.AuthVideoPosterURL != defaultAppearancePosterURL {
+		t.Fatalf("public appearance media = video %q, poster %q", appearance.AuthVideoURL, appearance.AuthVideoPosterURL)
 	}
 }
 

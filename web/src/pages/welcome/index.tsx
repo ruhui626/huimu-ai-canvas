@@ -1,20 +1,17 @@
 import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
-import { Button, ConfigProvider, Tabs } from "antd";
-import { ArrowDown, ArrowRight, ArrowUpRight, Code2, Menu, Pause, Play, X } from "lucide-react";
+import { Button, ConfigProvider } from "antd";
+import { ArrowDown, ArrowUpRight, Pause, Play, X } from "lucide-react";
 
 import { BrandLogo } from "@/components/brand/brand-logo";
 import { IconButton } from "@/components/ui/base/buttons";
 import { getAntThemeConfig } from "@/lib/app-theme";
 import { useAppearanceStore } from "@/stores/use-appearance-store";
 
-import { WelcomeContributorsCard } from "./contributors-card";
-import { chapters, getWelcomeLook, showcases, welcomeLooks, type WelcomeLook } from "./story";
+import { chapters, getWelcomeLook, welcomeLooks, type WelcomeLook } from "./story";
 import "./welcome.css";
 import { Select } from "@/components/ui/base/select";
 
 const StoryReel = lazy(() => import("./story-reel"));
-const github = "https://github.com/ddcat-ai/open-ai-canvas";
-
 export default function WelcomePage() {
     const [look, setLook] = useState(getWelcomeLook);
     const appearance = useAppearanceStore((state) => state.appearance);
@@ -53,13 +50,11 @@ function WelcomeExperience({ look, brandName, onLookChange }: { look: WelcomeLoo
     const [paused, setPaused] = useState(false);
     const [failed, setFailed] = useState(false);
     const [ready, setReady] = useState(false);
-    const [menu, setMenu] = useState(false);
-    const [showcase, setShowcase] = useState(1);
     const [playing, setPlaying] = useState(false);
     const videoRef = useRef<HTMLVideoElement>(null);
 
     useEffect(() => {
-        document.title = "影策 · 让一个故事从文字走向银幕";
+        document.title = `${brandName} · 让一个故事从文字走向银幕`;
         const media = window.matchMedia("(prefers-reduced-motion: reduce)");
         const onMotion = () => setReduced(media.matches);
         media.addEventListener("change", onMotion);
@@ -79,7 +74,7 @@ function WelcomeExperience({ look, brandName, onLookChange }: { look: WelcomeLoo
             window.removeEventListener("scroll", onScroll);
             window.removeEventListener("resize", onScroll);
         };
-    }, []);
+    }, [brandName]);
 
     useEffect(() => {
         if (!playing) return;
@@ -92,26 +87,18 @@ function WelcomeExperience({ look, brandName, onLookChange }: { look: WelcomeLoo
         if (!storyRef.current) return;
         const height = storyRef.current.offsetHeight - window.innerHeight;
         window.scrollTo({ top: storyRef.current.offsetTop + height * (index === 5 ? 0.97 : index / 6 + (index ? 0.04 : 0)), behavior: reduced ? "instant" : "smooth" });
-        setMenu(false);
     };
     const staticScene = reduced || failed;
-    const active = showcases[showcase];
 
     return (
         <div className="welcome-page">
-            <a className="welcome-skip" href="#workbench">前往工作台介绍</a>
+            <a className="welcome-skip" href="#welcome-ending">跳过故事介绍</a>
             <header className="welcome-header">
                 <a className="welcome-brand" href="/welcome" aria-label={`${brandName}首页`}>
                     <BrandLogo theme="dark" className="welcome-brand-logo" alt="" fallback={<span className="welcome-brand-logo is-fallback" />} />
                     {brandName}
                 </a>
-                <nav className={menu ? "welcome-nav is-open" : "welcome-nav"} aria-label="首页导航">
-                    <a href="#workbench" onClick={() => setMenu(false)}>工作台</a>
-                    <a href="#contributors" onClick={() => setMenu(false)}>贡献者</a>
-                    <a href={github} target="_blank" rel="noreferrer">GitHub<ArrowUpRight size={13} /></a>
-                </nav>
                 <Button className="welcome-header-cta" type="primary" href="/create" icon={<ArrowUpRight size={16} />} iconPlacement="end">开始创作</Button>
-                <IconButton className="welcome-icon mobile-menu" variant="ghost" size="lg" icon={menu ? X : Menu} aria-label={menu ? "关闭菜单" : "打开菜单"} aria-expanded={menu} onClick={() => setMenu(!menu)} />
             </header>
             <aside className="welcome-look-picker" aria-label="首页素材版本">
                 <Select id="welcome-look-select" aria-label="素材版本" value={look.id} options={welcomeLooks.map((item) => ({ label: item.label, value: item.id }))} onChange={onLookChange} popupMatchSelectWidth={false} />
@@ -119,7 +106,7 @@ function WelcomeExperience({ look, brandName, onLookChange }: { look: WelcomeLoo
             </aside>
 
             <main>
-                <section ref={storyRef} id="story" className="welcome-story" aria-label="影策创作之旅">
+                <section ref={storyRef} id="story" className="welcome-story" aria-label={`${brandName}创作之旅`}>
                     <div className={`welcome-stage chapter-${chapter}${staticScene ? " is-static" : ""}`}>
                         <div className={`welcome-poster${ready && !staticScene ? " is-ready" : ""}`} aria-hidden="true"><img src={look.frames[staticScene ? chapter * 2 : 0]} alt="" fetchPriority="high" /></div>
                         {!staticScene && <SceneBoundary onError={() => setFailed(true)}><Suspense fallback={null}><StoryReel look={look} progress={progressRef} paused={paused} onReady={() => setReady(true)} onError={() => setFailed(true)} /></Suspense></SceneBoundary>}
@@ -131,24 +118,16 @@ function WelcomeExperience({ look, brandName, onLookChange }: { look: WelcomeLoo
                             </section>
                         ))}
                         <div className="welcome-stage-bottom">
-                            <IconButton className="welcome-next" variant="ghost" size="lg" icon={ArrowDown} aria-label={chapter === 5 ? "进入创作现场" : "下一幕"} onClick={() => chapter < 5 ? jumpTo(chapter + 1) : document.getElementById("workbench")?.scrollIntoView({ behavior: reduced ? "instant" : "smooth" })} />
+                            <IconButton className="welcome-next" variant="ghost" size="lg" icon={ArrowDown} aria-label={chapter === 5 ? "结束故事介绍" : "下一幕"} onClick={() => chapter < 5 ? jumpTo(chapter + 1) : document.getElementById("welcome-ending")?.scrollIntoView({ behavior: reduced ? "instant" : "smooth" })} />
                             <nav className="welcome-chapter-nav" aria-label="故事章节">{chapters.map((item, index) => <button key={item.id} className={chapter === index ? "is-current" : ""} aria-label={item.label} title={item.label} aria-current={chapter === index ? "step" : undefined} onClick={() => jumpTo(index)}><span /></button>)}</nav>
                             <IconButton className="welcome-icon" variant="ghost" icon={paused || staticScene ? Play : Pause} title={paused || staticScene ? "播放动画" : "暂停动画"} aria-label={paused || staticScene ? "播放动画" : "暂停动画"} aria-pressed={paused || staticScene} disabled={staticScene} onClick={() => setPaused(!paused)} />
                         </div>
                     </div>
                 </section>
 
-                <section id="workbench" className="welcome-workbench">
-                    <div className="welcome-section-heading"><h2>让想象，有处落笔。</h2></div>
-                    <div className="welcome-workbench-bar"><Tabs activeKey={String(showcase)} aria-label="工作台预览" items={showcases.map((item, index) => ({ key: String(index), label: item.name }))} onChange={(key) => setShowcase(Number(key))} /><Button type="link" href={active.href} icon={<ArrowUpRight size={16} />} iconPlacement="end">进入{active.name}</Button></div>
-                    <div id="workbench-preview" role="tabpanel" className="welcome-workbench-preview"><img src={active.image} alt={`${brandName}${active.name}界面`} loading="lazy" /></div>
-                    <div className="welcome-workbench-caption"><p>{active.detail}</p></div>
-                </section>
-
-                <section className="welcome-ending"><h2>你的故事，<br />现在开始。</h2>
-                <WelcomeContributorsCard /></section>
+                <section id="welcome-ending" className="welcome-ending"><h2>你的故事，<br />现在开始。</h2></section>
             </main>
-            <footer className="welcome-footer"><a href="/welcome">{brandName}</a><span>开源 AI 影视创作工作台</span><a href={`${github}/blob/main/LICENSE`} target="_blank" rel="noreferrer">Open Source · MIT License<ArrowUpRight size={12} /></a></footer>
+            <footer className="welcome-footer"><a href="/welcome">{brandName}</a><span>开源 AI 影视创作工作台</span></footer>
             {look.credit && <div className="welcome-media-credit"><a href={`/welcome/credits.html#${look.id}`} target="_blank" rel="noreferrer">{look.credit} · 署名与许可<ArrowUpRight size={12} /></a></div>}
             {playing && look.video && <FilmDialog look={look} onClose={() => setPlaying(false)} videoRef={videoRef} />}
         </div>
