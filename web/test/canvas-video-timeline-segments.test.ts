@@ -50,7 +50,7 @@ describe("buildTimelineImportSegments", () => {
         expect(result.ok).toBe(true);
         if (!result.ok) return;
         expect(result.segments).toHaveLength(1);
-        expect(result.segments[0]).toMatchObject({ startMs: 2_000, endMs: 5_000, sourceNodeId: "source-video" });
+        expect(result.segments[0]).toMatchObject({ startMs: 2_000, endMs: 5_000, sourceNodeId: "source-video", sourceDurationMs: 10_000 });
     });
 
     test("旧数据 nodeId 不一致时按唯一标题回退匹配", () => {

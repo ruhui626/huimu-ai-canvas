@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
-import { App, Button, Checkbox, Divider, Input, Modal, Segmented } from "antd";
+import { App, Button, Checkbox, Divider, Input, Modal } from "antd";
 import { ArrowRight, FileText, Info, LockKeyhole, Mail, TriangleAlert, UserRound } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 
@@ -7,7 +7,7 @@ import { getAuthSession, getAuthSettings, linuxDOLoginURL, register } from "@/se
 import { LinuxDOIcon } from "./auth-scene";
 import { ApiError } from "@/services/api/request";
 import { VerificationFields } from "@/components/auth/verification-fields";
-import { emptyVerification, methodLabels, verificationMethods, type VerificationMethod } from "@/services/api/verification";
+import { emptyVerification } from "@/services/api/verification";
 import { useAppearanceStore } from "@/stores/use-appearance-store";
 
 type AuthSettings = Awaited<ReturnType<typeof getAuthSettings>>;
@@ -21,8 +21,6 @@ export default function RegisterPage() {
     const [username, setUsername] = useState("");
     const [email, setEmail] = useState("");
     const [verification, setVerification] = useState({ ...emptyVerification });
-    const [method, setMethod] = useState<VerificationMethod>("email");
-    const [displayName, setDisplayName] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [agreementAccepted, setAgreementAccepted] = useState(false);
@@ -46,7 +44,7 @@ export default function RegisterPage() {
         let cancelled = false;
         setSettingsFailed(false);
         void getAuthSettings()
-            .then((value) => { if (!cancelled) { setSettings(value); setMethod(verificationMethods(value, "register")[0] ?? "email"); } })
+            .then((value) => { if (!cancelled) setSettings(value); })
             .catch((error) => {
                 if (cancelled) return;
                 // 这里必须留下失败态：协议标题只能来自后台配置，读不到时不能用品牌名
@@ -73,8 +71,13 @@ export default function RegisterPage() {
         registering.current = true;
         setSubmitting(true);
         try {
-            if (!settings?.firstUser && !verification.ticket) throw new Error("请先获取本次注册验证码");
-            await register({ username, ...(settings?.firstUser ? { email } : verification), displayName, password, acceptedTerms: agreementAccepted });
+            if (!settings?.firstUser && settings?.emailCodeRequired && !verification.ticket) throw new Error("请先获取本次注册验证码");
+            await register({
+                username,
+                ...(settings?.firstUser ? { email } : settings?.emailCodeRequired ? verification : { email }),
+                password,
+                acceptedTerms: agreementAccepted,
+            });
             const { applyUserSession } = await import("@/lib/user-session");
             await applyUserSession(await getAuthSession());
             if (!settings?.firstUser) window.sessionStorage.setItem("infinite-canvas:model-setup-guide", "1");
@@ -96,9 +99,8 @@ export default function RegisterPage() {
     }, [registerCountdown]);
 
     const registrationClosed = settings?.registrationEnabled === false;
-    const methods = settings ? verificationMethods(settings, "register") : [];
-    const verificationUnavailable = Boolean(settings && !settings.firstUser && methods.length === 0);
-    const disabled = !settings || registrationClosed || verificationUnavailable;
+    const mailUnavailable = Boolean(settings && !settings.firstUser && settings.emailCodeRequired && !settings.emailEnabled);
+    const disabled = !settings || registrationClosed || mailUnavailable;
 
     return (
         <form onSubmit={submit} className="space-y-4">
@@ -112,20 +114,15 @@ export default function RegisterPage() {
                     当前已关闭普通注册，请联系管理员创建账号。
                 </Notice>
             ) : null}
-            {verificationUnavailable ? (
+            {mailUnavailable ? (
                 <Notice icon={<TriangleAlert className="size-3.5" />} tone="amber">
-                    当前没有可用的注册验证方式，请联系管理员检查短信及邮件配置。
+                    管理员尚未配置注册邮件，普通邮箱注册暂不可用。
                 </Notice>
             ) : null}
 
-            <div className="grid gap-4 sm:grid-cols-2">
-                <AuthField label="用户名">
-                    <Input size="large" prefix={<UserRound className="auth-scene-icon size-4" />} value={username} onChange={(event) => setUsername(event.target.value)} placeholder="3-32 位字符" autoComplete="username" required disabled={disabled} />
-                </AuthField>
-                <AuthField label="显示名称">
-                    <Input size="large" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="不填则使用用户名" disabled={disabled} />
-                </AuthField>
-            </div>
+            <AuthField label="用户名">
+                <Input size="large" prefix={<UserRound className="auth-scene-icon size-4" />} value={username} onChange={(event) => setUsername(event.target.value)} placeholder="3-32 位字符" autoComplete="username" required disabled={disabled} />
+            </AuthField>
 
             {settings?.firstUser ? <AuthField label="邮箱（可选）">
                 <Input
@@ -138,10 +135,23 @@ export default function RegisterPage() {
                     required={!settings?.firstUser}
                     disabled={disabled}
                 />
-            </AuthField> : <>
-                {methods.length > 1 && <Segmented block aria-label="注册验证方式" options={methods.map((value) => ({ value, label: methodLabels[value] }))} value={method} disabled={submitting} onChange={(value) => { setMethod(value as VerificationMethod); setVerification({ ...emptyVerification }); }} />}
-                {methods.length > 0 && <VerificationFields key={method} purpose="register" method={method} value={verification} onChange={setVerification} disabled={disabled || submitting} />}
-            </>}
+            </AuthField> : settings?.emailCodeRequired ? (
+                <VerificationFields purpose="register" method="email" value={verification} onChange={setVerification} disabled={disabled || submitting} />
+            ) : (
+                <AuthField label="邮箱">
+                    <Input
+                        size="large"
+                        prefix={<Mail className="auth-scene-icon size-4" />}
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
+                        placeholder="用于登录与安全验证"
+                        autoComplete="email"
+                        type="email"
+                        required
+                        disabled={disabled}
+                    />
+                </AuthField>
+            )}
 
             <div className="grid gap-4 sm:grid-cols-2">
                 <AuthField label="密码">

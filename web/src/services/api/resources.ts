@@ -1,5 +1,4 @@
 import { getActiveUserScope } from "@/lib/user-scope";
-import { localForageStorageForScope } from "@/lib/localforage-storage";
 import { http, apiBaseURL, ApiError } from "@/services/api/request";
 import type { OSSConnectionTestInput, OSSConnectionTestResult, OSSProvider, S3Preset } from "@/lib/oss-settings";
 
@@ -104,7 +103,7 @@ const resourceCache = new Map<string, RemoteResource>();
 const resourceRequests = new Map<string, Promise<RemoteResource>>();
 const missingResourceIds = new Set<string>();
 export type ResourceAccessPurpose = "display" | "copy" | "download" | "browser-process" | "provider-input";
-export type ResourceAccessVariant = "original" | "playback" | "thumbnail";
+export type ResourceAccessVariant = "original" | "playback";
 export type ResourceAccess = {
     resourceId: string;
     requestedVariant: ResourceAccessVariant;
@@ -124,16 +123,6 @@ type ResourceAccessBatchItem = { resourceId: string; access?: ResourceAccess; er
 type CachedResourceAccess = { value: ResourceAccess; expiresAt: number };
 const accessCache = new Map<string, CachedResourceAccess>();
 const accessRequests = new Map<string, Promise<ResourceAccess>>();
-const PERSISTED_DISPLAY_ACCESS_PREFIX = "resource-access-v1:";
-
-function persistedDisplayAccessKey(resourceId: string, variant: ResourceAccessVariant) {
-    return `${PERSISTED_DISPLAY_ACCESS_PREFIX}${resourceId}:${variant}`;
-}
-
-function shouldPersistDisplayAccess(value: ResourceAccess) {
-    // 只跨页面缓存 OSS/CDN 直连地址；平台本地/代理地址仍只在内存中保留，避免把平台签名凭据落到持久存储。
-    return value.delivery === "cdn" || value.delivery === "origin";
-}
 
 function resourceAccessCacheExpiry(value: ResourceAccess, now = Date.now()) {
     const expiresAt = value.expiresAt ? new Date(value.expiresAt).getTime() : Number.NaN;
@@ -144,32 +133,6 @@ function resourceAccessCacheExpiry(value: ResourceAccess, now = Date.now()) {
     return now + 5 * 60_000;
 }
 
-async function readPersistedDisplayAccess(scope: string, resourceId: string, variant: ResourceAccessVariant): Promise<CachedResourceAccess | undefined> {
-    try {
-        const raw = await localForageStorageForScope(scope).getItem(persistedDisplayAccessKey(resourceId, variant));
-        if (!raw) return undefined;
-        const parsed = JSON.parse(raw) as Partial<CachedResourceAccess>;
-        if (!parsed.value?.url || !shouldPersistDisplayAccess(parsed.value) || typeof parsed.expiresAt !== "number") return undefined;
-        const actualExpiresAt = parsed.value.expiresAt ? new Date(parsed.value.expiresAt).getTime() : Number.NaN;
-        if (parsed.expiresAt <= Date.now() || (Number.isFinite(actualExpiresAt) && actualExpiresAt <= Date.now() + 1_000)) {
-            await localForageStorageForScope(scope).removeItem(persistedDisplayAccessKey(resourceId, variant));
-            return undefined;
-        }
-        return parsed as CachedResourceAccess;
-    } catch {
-        // 签名地址缓存只是性能优化，存储不可用或数据损坏时继续走后端签发。
-        return undefined;
-    }
-}
-
-async function persistDisplayAccess(scope: string, resourceId: string, variant: ResourceAccessVariant, entry: CachedResourceAccess) {
-    if (!shouldPersistDisplayAccess(entry.value) || entry.expiresAt <= Date.now()) return;
-    try {
-        await localForageStorageForScope(scope).setItem(persistedDisplayAccessKey(resourceId, variant), JSON.stringify(entry));
-    } catch {
-        // 不把本地缓存失败升级为资源访问失败。
-    }
-}
 let accessGeneration = 0;
 
 /**
@@ -184,6 +147,23 @@ export function clearResourceAccessCache() {
     resourceCache.clear();
     resourceRequests.clear();
     missingResourceIds.clear();
+}
+
+export function invalidateResourceAccess(storageKey: string | undefined, purpose: ResourceAccessPurpose = "display", variant: ResourceAccessVariant = "original") {
+    const id = resourceIdFromStorageKey(storageKey);
+    if (!id) return;
+    const prefix = `${getActiveUserScope()}:${id}:${purpose}:${variant}:`;
+    for (const key of accessCache.keys()) {
+        if (key.startsWith(prefix)) accessCache.delete(key);
+    }
+    for (const key of accessRequests.keys()) {
+        if (key.startsWith(prefix)) accessRequests.delete(key);
+    }
+}
+
+export function refreshResourceAccess(storageKey: string | undefined, purpose: ResourceAccessPurpose = "display", variant: ResourceAccessVariant = "original", downloadName = "") {
+    invalidateResourceAccess(storageKey, purpose, variant);
+    return getResourceAccess(storageKey, purpose, variant, downloadName);
 }
 
 export function resourceStorageKey(id: string) {
@@ -386,15 +366,6 @@ export async function getResourceAccess(storageKey: string | undefined, purpose:
     let request!: Promise<ResourceAccess>;
     request = (async () => {
         try {
-            // 只跨页面复用普通展示地址。下载和模型输入地址可能包含更敏感的权限/文件名，仍只保留内存缓存。
-            if (purpose === "display") {
-                const persisted = await readPersistedDisplayAccess(scope, id, variant);
-                assertResourceRequestCurrent(generation, scope);
-                if (persisted) {
-                    accessCache.set(key, persisted);
-                    return persisted.value;
-                }
-            }
             const data = await http.post<{ items: ResourceAccessBatchItem[] }>("/resources/access", [{ resourceId: id, purpose, variant, ...(downloadName ? { downloadName } : {}) }]);
             if (generation !== accessGeneration || scope !== getActiveUserScope()) {
                 throw new DOMException("资源访问请求已因账号切换失效", "AbortError");
@@ -405,7 +376,6 @@ export async function getResourceAccess(storageKey: string | undefined, purpose:
             const entry = { value, expiresAt: resourceAccessCacheExpiry(value) } satisfies CachedResourceAccess;
             if (entry.expiresAt > Date.now()) {
                 accessCache.set(key, entry);
-                if (purpose === "display") await persistDisplayAccess(scope, id, variant, entry);
             }
             return value;
         } catch (error) {
@@ -462,16 +432,23 @@ export function playbackVariantUrl(id: string) {
     return `${base}/resources/${encodeURIComponent(id)}/file?variant=playback`;
 }
 
-export async function getResourceBlob(storageKey: string) {
+export async function getResourceBlob(storageKey: string, signal?: AbortSignal) {
     const id = resourceIdFromStorageKey(storageKey);
     if (!id) return null;
-    const access = await getResourceAccess(storageKey, "browser-process");
-    // CDN/origin URLs carry their own authorization and must not receive the
-    // application session cookie. Local/proxy delivery is intentionally
-    // session-bound, so a Blob read must include it even when the URL is
-    // relative to the platform origin.
-    const credentials = access.delivery === "platform-local" || access.delivery === "platform-proxy" ? "include" : "omit";
-    const response = await fetch(resolveResourceAccessURL(access.url), { credentials, mode: "cors" });
+    const read = (access: ResourceAccess) => {
+        // CDN/origin URLs carry their own authorization and must not receive the
+        // application session cookie. Local/proxy delivery is intentionally
+        // session-bound, so a Blob read must include it even when the URL is
+        // relative to the platform origin.
+        const credentials = access.delivery === "platform-local" || access.delivery === "platform-proxy" ? "include" : "omit";
+        return fetch(resolveResourceAccessURL(access.url), { credentials, mode: "cors", signal });
+    };
+    let access = await getResourceAccess(storageKey, "browser-process");
+    let response = await read(access);
+    if (response.status === 401 || response.status === 403) {
+        access = await refreshResourceAccess(storageKey, "browser-process");
+        response = await read(access);
+    }
     if (!response.ok) throw new Error(`资源读取失败（${response.status}）`);
     return response.blob();
 }

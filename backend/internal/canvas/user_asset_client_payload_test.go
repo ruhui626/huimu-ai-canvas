@@ -61,6 +61,22 @@ func TestClientAssetPayloadPreservesCompleteDocument(t *testing.T) {
 	}
 }
 
+func TestClientAssetPayloadReplacesManagedImageSignedURLs(t *testing.T) {
+	asset := model.Asset{PayloadJSON: `{"id":"asset-1","kind":"image","title":"生成图片","coverUrl":"https://oss.example.com/a.png?Expires=1&Signature=expired","tags":[],"data":{"dataUrl":"https://oss.example.com/a.png?Expires=1&Signature=expired","storageKey":"resource:res-image-1","width":2,"height":3,"bytes":1,"mimeType":"image/png"}}`}
+	var payload map[string]any
+	if err := json.Unmarshal(ClientAssetPayload(asset), &payload); err != nil {
+		t.Fatal(err)
+	}
+	want := "/api/resources/res-image-1/file"
+	if payload["coverUrl"] != want {
+		t.Fatalf("coverUrl = %#v, want %q", payload["coverUrl"], want)
+	}
+	data := payload["data"].(map[string]any)
+	if data["dataUrl"] != want {
+		t.Fatalf("dataUrl = %#v, want %q", data["dataUrl"], want)
+	}
+}
+
 func TestClientAssetListPayloadDropsVerboseMetadata(t *testing.T) {
 	asset := model.Asset{PayloadJSON: `{"id":"asset-1","kind":"image","title":"列表","coverUrl":"https://example.com/a.png","tags":[],"data":{"dataUrl":"https://example.com/a.png","width":2,"height":3,"bytes":1,"mimeType":"image/png"},"metadata":{"prompt":"很长的生成提示词","nodeId":"node-1","projectIds":["project-1"]}}`}
 	var payload map[string]any

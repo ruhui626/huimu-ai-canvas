@@ -4,7 +4,9 @@ import { AudioLines, Check, ListVideo, Plus, Scissors, SkipBack, SkipForward, Tr
 import { nanoid } from "nanoid";
 
 import { ModelPicker } from "@/components/model-picker";
+import { CanvasVideoSegmentRangeEditor } from "@/components/canvas/canvas-video-segment-range-editor";
 import { canvasThemes } from "@/lib/canvas-theme";
+import { createVideoSegmentRangeAt, normalizeVideoSegmentRange, VIDEO_SEGMENT_MIN_MS } from "@/lib/canvas/canvas-video-segment-range";
 import { buildTimelineImportSegments, type CanvasTimelineSegmentItem } from "@/lib/canvas/canvas-video-timeline-segments";
 import { listVideoReferenceModels } from "@/lib/canvas/canvas-video-regeneration";
 import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
@@ -42,8 +44,6 @@ type CanvasVideoSegmentDialogProps = {
     onConfirm: (params: CanvasVideoSegmentParams) => void;
 };
 
-const MIN_SEGMENT_MS = 100;
-
 export function CanvasVideoSegmentDialog({ node, nodes, connections, open, mode, config, timeline, onClose, onConfirm }: CanvasVideoSegmentDialogProps) {
     const { message } = App.useApp();
     const theme = canvasThemes[useActiveTheme()];
@@ -52,10 +52,12 @@ export function CanvasVideoSegmentDialog({ node, nodes, connections, open, mode,
     const [videoUrl, setVideoUrl] = useState("");
     const [videoError, setVideoError] = useState(false);
     const [durationMs, setDurationMs] = useState(0);
+    const [currentTimeMs, setCurrentTimeMs] = useState(0);
     const [startSec, setStartSec] = useState(0);
     const [endSec, setEndSec] = useState(0);
     const [prompt, setPrompt] = useState("");
     const [segments, setSegments] = useState<CanvasVideoSegmentItem[]>([]);
+    const [activeSegmentId, setActiveSegmentId] = useState("");
     const [model, setModel] = useState("");
     const [operation, setOperation] = useState<CanvasVideoEditOperation>("extend");
     const [videoAction, setVideoAction] = useState<"extract" | "create-generation-nodes">("extract");
@@ -68,10 +70,12 @@ export function CanvasVideoSegmentDialog({ node, nodes, connections, open, mode,
         setVideoUrl("");
         setVideoError(false);
         setDurationMs(0);
+        setCurrentTimeMs(0);
         setStartSec(0);
         setEndSec(0);
         setPrompt("");
         setSegments([]);
+        setActiveSegmentId("");
         setVideoAction("extract");
         segmentsSeededRef.current = false;
         const defaultModel = config.videoModel || config.model || "";
@@ -93,7 +97,9 @@ export function CanvasVideoSegmentDialog({ node, nodes, connections, open, mode,
     useEffect(() => {
         if (!open || mode !== "video" || segmentsSeededRef.current || !durationMs) return;
         segmentsSeededRef.current = true;
-        setSegments([{ id: nanoid(), startMs: 0, endMs: durationMs, sourceNodeId: node.id }]);
+        const id = nanoid();
+        setSegments([{ id, startMs: 0, endMs: durationMs, sourceNodeId: node.id, sourceDurationMs: durationMs }]);
+        setActiveSegmentId(id);
     }, [durationMs, mode, open]);
 
     const isVideoMode = mode === "video";
@@ -117,6 +123,12 @@ export function CanvasVideoSegmentDialog({ node, nodes, connections, open, mode,
     const defaultModelSupported = eligibleModels.includes(defaultModel);
     const hasEligibleModels = eligibleModels.length > 0;
     const firstEligibleModel = eligibleModels[0] || "";
+    const activeSegment = segments.find((segment) => segment.id === activeSegmentId) || segments[0];
+    const canPreviewActiveSegment = Boolean(activeSegment && (!activeSegment.sourceNodeId || activeSegment.sourceNodeId === node.id));
+    const durationForSegment = (segment: CanvasVideoSegmentItem) => {
+        const sourceNode = segment.sourceNodeId ? nodes.find((item) => item.id === segment.sourceNodeId) : undefined;
+        return segment.sourceDurationMs || sourceNode?.metadata?.durationMs || (segment.sourceNodeId === node.id ? durationMs : 0) || durationMs;
+    };
 
     // 切换模型后保持所选模式仍然有效，优先回退到“视频续写”。
     useEffect(() => {
@@ -136,11 +148,12 @@ export function CanvasVideoSegmentDialog({ node, nodes, connections, open, mode,
     }, [durationMs, endSec, startSec]);
 
     const addManualSegment = () => {
-        const last = segments[segments.length - 1];
-        const maxEndMs = durationMs || last?.endMs || 0;
-        const startMs = last ? Math.min(maxEndMs, last.endMs) : 0;
-        const endMs = Math.max(startMs + MIN_SEGMENT_MS, maxEndMs);
-        setSegments((current) => [...current, { id: nanoid(), startMs, endMs, sourceNodeId: node.id }]);
+        if (!durationMs) return;
+        const id = nanoid();
+        const preferredStart = Math.round(videoRef.current?.currentTime ? videoRef.current.currentTime * 1000 : 0);
+        const { startMs, endMs } = createVideoSegmentRangeAt(durationMs, preferredStart);
+        setSegments((current) => [...current, { id, startMs, endMs, sourceNodeId: node.id, sourceDurationMs: durationMs }]);
+        setActiveSegmentId(id);
     };
 
     const importTimelineSegments = () => {
@@ -151,6 +164,7 @@ export function CanvasVideoSegmentDialog({ node, nodes, connections, open, mode,
                 return;
             }
             setSegments(result.segments);
+            setActiveSegmentId(result.segments[0]?.id || "");
             setPrompt((current) => current || `按时间线截取的 ${result.segments.length} 段视频，保持画面主体与镜头，重新生成每一段`);
             message.success(`已从时间线导入 ${result.segments.length} 个片段`);
         } catch (error) {
@@ -164,7 +178,9 @@ export function CanvasVideoSegmentDialog({ node, nodes, connections, open, mode,
     };
 
     const removeSegment = (id: string) => {
-        setSegments((current) => current.filter((item) => item.id !== id));
+        const next = segments.filter((item) => item.id !== id);
+        setSegments(next);
+        if (activeSegmentId === id) setActiveSegmentId(next[0]?.id || "");
     };
 
     const handleConfirm = () => {
@@ -177,18 +193,25 @@ export function CanvasVideoSegmentDialog({ node, nodes, connections, open, mode,
                 message.warning("请至少添加一个截取片段");
                 return;
             }
-            for (const segment of segments) {
-                if (segment.endMs - segment.startMs < MIN_SEGMENT_MS) {
-                    message.warning("片段时长至少 0.1 秒");
-                    return;
-                }
+            let normalizedSegments: CanvasVideoSegmentItem[];
+            try {
+                normalizedSegments = segments.map((segment, index) => {
+                    const sourceNode = segment.sourceNodeId ? nodes.find((item) => item.id === segment.sourceNodeId) : undefined;
+                    const sourceDurationMs = segment.sourceDurationMs || sourceNode?.metadata?.durationMs || (segment.sourceNodeId === node.id ? durationMs : undefined);
+                    const range = normalizeVideoSegmentRange(segment, sourceDurationMs);
+                    if (range.endMs - range.startMs < VIDEO_SEGMENT_MIN_MS) throw new Error(`片段 ${index + 1} 时长至少 0.1 秒`);
+                    return { ...segment, ...range, sourceDurationMs };
+                });
+            } catch (error) {
+                message.warning(error instanceof Error ? error.message : "片段时间无效");
+                return;
             }
             onConfirm({
                 mode: "video",
                 action: videoAction,
                 startMs: 0,
                 endMs: 0,
-                segments: segments.map(({ id, startMs, endMs, sourceNodeId, sourceStorageKey, sourceUrl }) => ({ id, startMs, endMs, sourceNodeId, sourceStorageKey, sourceUrl })),
+                segments: normalizedSegments.map(({ id, startMs, endMs, sourceNodeId, sourceStorageKey, sourceUrl, sourceDurationMs }) => ({ id, startMs, endMs, sourceNodeId, sourceStorageKey, sourceUrl, sourceDurationMs })),
                 model: createsGenerationNodes ? resolvedModel : undefined,
                 operation: createsGenerationNodes ? operation : undefined,
                 prompt: createsGenerationNodes ? prompt.trim() : undefined,
@@ -199,7 +222,7 @@ export function CanvasVideoSegmentDialog({ node, nodes, connections, open, mode,
             message.warning("视频时长未就绪，请稍候再试");
             return;
         }
-        if (rangeMs.endMs - rangeMs.startMs < MIN_SEGMENT_MS) {
+        if (rangeMs.endMs - rangeMs.startMs < VIDEO_SEGMENT_MIN_MS) {
             message.warning("片段时长至少 0.1 秒");
             return;
         }
@@ -219,7 +242,7 @@ export function CanvasVideoSegmentDialog({ node, nodes, connections, open, mode,
     );
 
     return (
-        <Modal title={title} open={open} onCancel={onClose} footer={null} width={680} centered destroyOnHidden>
+        <Modal title={title} open={open} onCancel={onClose} footer={null} width={860} centered destroyOnHidden>
             <div className="space-y-4">
                 <div className="flex min-h-0 items-center justify-center overflow-hidden rounded-xl border bg-black" style={{ borderColor: theme.toolbar.border }}>
                     {videoUrl ? (
@@ -238,6 +261,8 @@ export function CanvasVideoSegmentDialog({ node, nodes, connections, open, mode,
                                     setEndSec(totalMs / 1000);
                                 }
                             }}
+                            onTimeUpdate={(event) => setCurrentTimeMs(Math.round(event.currentTarget.currentTime * 1000))}
+                            onSeeked={(event) => setCurrentTimeMs(Math.round(event.currentTarget.currentTime * 1000))}
                             onError={() => setVideoError(true)}
                         />
                     ) : (
@@ -279,10 +304,31 @@ export function CanvasVideoSegmentDialog({ node, nodes, connections, open, mode,
                             </div>
                         </div>
 
+                        {activeSegment && canPreviewActiveSegment && durationMs > 0 ? (
+                            <CanvasVideoSegmentRangeEditor
+                                videoUrl={videoUrl}
+                                durationMs={durationMs}
+                                currentTimeMs={currentTimeMs}
+                                segment={activeSegment}
+                                theme={theme}
+                                onChange={(patch) => updateSegment(activeSegment.id, patch)}
+                                onSeek={(timeMs) => {
+                                    const video = videoRef.current;
+                                    if (!video) return;
+                                    video.currentTime = Math.max(0, Math.min(durationMs, timeMs)) / 1000;
+                                    setCurrentTimeMs(timeMs);
+                                }}
+                            />
+                        ) : activeSegment ? (
+                            <div className="rounded-lg border border-dashed px-3 py-2 text-xs opacity-55" style={{ borderColor: theme.toolbar.border }}>
+                                该片段来自时间线中的其他视频，当前使用精确时间输入编辑。
+                            </div>
+                        ) : null}
+
                         {segments.length ? (
                             <div className="thin-scrollbar max-h-56 space-y-2 overflow-y-auto pr-1">
                                 {segments.map((segment, index) => (
-                                    <div key={segment.id} className="rounded-lg border px-2.5 py-2" style={{ borderColor: theme.toolbar.border }}>
+                                    <div key={segment.id} className="rounded-lg border px-2.5 py-2 transition-colors" style={{ borderColor: activeSegment?.id === segment.id ? theme.accent.primary : theme.toolbar.border, background: activeSegment?.id === segment.id ? theme.accent.primarySoft + "18" : "transparent" }} onClick={() => setActiveSegmentId(segment.id)}>
                                         <div className="grid grid-cols-[auto_1fr_1fr_auto] items-center gap-2">
                                             <span className="w-14 shrink-0 text-xs font-medium">片段 {index + 1}</span>
                                             <div className="flex min-w-0 items-center gap-1">
@@ -290,7 +336,7 @@ export function CanvasVideoSegmentDialog({ node, nodes, connections, open, mode,
                                                 <InputNumber
                                                     size="small"
                                                     min={0}
-                                                    max={Math.max(0, durationSec - 0.1)}
+                                                    max={Math.max(0, durationForSegment(segment) / 1000 - 0.1)}
                                                     step={0.1}
                                                     value={segment.startMs / 1000}
                                                     onChange={(value) => updateSegment(segment.id, { startMs: Math.round((value ?? 0) * 1000) })}
@@ -303,7 +349,7 @@ export function CanvasVideoSegmentDialog({ node, nodes, connections, open, mode,
                                                 <InputNumber
                                                     size="small"
                                                     min={0}
-                                                    max={Math.max(0, durationSec)}
+                                                    max={Math.max(0, durationForSegment(segment) / 1000)}
                                                     step={0.1}
                                                     value={segment.endMs / 1000}
                                                     onChange={(value) => updateSegment(segment.id, { endMs: Math.round((value ?? 0) * 1000) })}
@@ -311,7 +357,7 @@ export function CanvasVideoSegmentDialog({ node, nodes, connections, open, mode,
                                                     aria-label={`片段 ${index + 1} 终点（秒）`}
                                                 />
                                             </div>
-                                            <Button size="small" type="text" danger icon={<Trash2 className="size-3.5" />} aria-label={`删除片段 ${index + 1}`} onClick={() => removeSegment(segment.id)} />
+                                            <Button size="small" type="text" danger icon={<Trash2 className="size-3.5" />} aria-label={`删除片段 ${index + 1}`} onClick={(event) => { event.stopPropagation(); removeSegment(segment.id); }} />
                                         </div>
                                     </div>
                                 ))}

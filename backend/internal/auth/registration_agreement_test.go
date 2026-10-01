@@ -79,7 +79,8 @@ func TestRegistrationToggleKeepsSavedAgreement(t *testing.T) {
 	svc := New(repository.New(db), brandHost{name: "星野"}, nil)
 	admin := &model.User{ID: "admin", Username: "admin", Role: model.UserRoleAdmin, Status: model.UserStatusActive}
 
-	if _, err := svc.UpdateRegistrationSetting(admin, RegistrationSettingRequest{Enabled: true, AgreementContent: strPtr("条款正文")}); err != nil {
+	mode := RegistrationModeEmailOnly
+	if _, err := svc.UpdateRegistrationSetting(admin, RegistrationSettingRequest{Enabled: true, Mode: &mode, AgreementContent: strPtr("条款正文")}); err != nil {
 		t.Fatal(err)
 	}
 	enabled, err := svc.RegistrationEnabled()
@@ -92,7 +93,7 @@ func TestRegistrationToggleKeepsSavedAgreement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if switched.Enabled || switched.AgreementContent != "条款正文" {
+	if switched.Enabled || switched.Mode != RegistrationModeEmailOnly || switched.AgreementContent != "条款正文" {
 		t.Fatalf("toggle wiped agreement: %#v", switched)
 	}
 
@@ -100,7 +101,7 @@ func TestRegistrationToggleKeepsSavedAgreement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cleared.AgreementContent != "" {
+	if cleared.Mode != RegistrationModeEmailOnly || cleared.AgreementContent != "" {
 		t.Fatalf("explicit clear ignored: %#v", cleared)
 	}
 }

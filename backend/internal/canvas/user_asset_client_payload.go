@@ -33,6 +33,14 @@ func ClientAssetPayload(asset model.Asset) json.RawMessage {
 	}
 	if data, ok := payload["data"].(map[string]any); ok {
 		kind, _ := payload["kind"].(string)
+		if kind == "image" {
+			if storageKey, ok := data["storageKey"].(string); ok {
+				if stableURL := resourceURLFromStorageKey(storageKey); stableURL != "" {
+					data["dataUrl"] = stableURL
+					payload["coverUrl"] = stableURL
+				}
+			}
+		}
 		switch kind {
 		case "image", "video":
 			ensurePositiveAssetDimension(data, "width")

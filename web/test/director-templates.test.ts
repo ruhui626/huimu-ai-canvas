@@ -150,11 +150,11 @@ describe("确定性与 id 独立", () => {
 
 describe("不升级 schema", () => {
     test("version 恒为 1，字段集合与兼容 factory 完全一致", () => {
-        const legacy = Object.keys(createDirectorScene("legacy")).toSorted();
+        const legacy = Object.keys(createDirectorScene("legacy")).sort();
         for (const id of ALL_IDS) {
             const scene = createDirectorSceneFromTemplate(id);
             expect(scene.version).toBe(1);
-            expect(Object.keys(scene).toSorted()).toEqual(legacy);
+            expect(Object.keys(scene).sort()).toEqual(legacy);
         }
     });
 

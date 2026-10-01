@@ -12,6 +12,7 @@
     "task-runtime-stability",
     "newapi-channel-2",
     "system-update",
+    "custom-offline-deployment",
     "protocol-plugins",
     "canvas-data-structure"
   ]

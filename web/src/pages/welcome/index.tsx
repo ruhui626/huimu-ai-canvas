@@ -1,7 +1,6 @@
 import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button, ConfigProvider } from "antd";
 import { ArrowDown, ArrowUpRight, Pause, Play, X } from "lucide-react";
-
 import { BrandLogo } from "@/components/brand/brand-logo";
 import { IconButton } from "@/components/ui/base/buttons";
 import { getAntThemeConfig } from "@/lib/app-theme";
@@ -127,7 +126,7 @@ function WelcomeExperience({ look, brandName, onLookChange }: { look: WelcomeLoo
 
                 <section id="welcome-ending" className="welcome-ending"><h2>你的故事，<br />现在开始。</h2></section>
             </main>
-            <footer className="welcome-footer"><a href="/welcome">{brandName}</a><span>开源 AI 影视创作工作台</span></footer>
+            <footer className="welcome-footer"><a href="/welcome">{brandName}</a><span>AI 影视创作工作台</span></footer>
             {look.credit && <div className="welcome-media-credit"><a href={`/welcome/credits.html#${look.id}`} target="_blank" rel="noreferrer">{look.credit} · 署名与许可<ArrowUpRight size={12} /></a></div>}
             {playing && look.video && <FilmDialog look={look} onClose={() => setPlaying(false)} videoRef={videoRef} />}
         </div>

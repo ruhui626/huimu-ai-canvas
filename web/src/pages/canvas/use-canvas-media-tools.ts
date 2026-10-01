@@ -425,7 +425,7 @@ export function useCanvasMediaTools({
                         : segment.sourceStorageKey || segment.sourceUrl
                             ? { url: segment.sourceUrl, storageKey: segment.sourceStorageKey }
                             : { url: node.metadata?.content, storageKey: node.metadata?.storageKey };
-                    const trimDurationMs = sourceNode?.metadata?.durationMs || node.metadata?.durationMs;
+                    const trimDurationMs = segment.sourceDurationMs || sourceNode?.metadata?.durationMs || node.metadata?.durationMs;
                     progress.update(`加载 FFmpeg（${index + 1}/${segments.length}）`, index * 4 + 1);
                     const mp4 = await trimVideoSegment(trimSource, { startMs: segment.startMs, endMs: segment.endMs }, trimDurationMs, (status) => {
                         progress.update(status.phase === "loading" ? `加载 FFmpeg（${index + 1}/${segments.length}）` : status.phase === "reading" ? `读取视频资源（${index + 1}/${segments.length}）` : `正在截取片段（${index + 1}/${segments.length}）`, status.phase === "encoding" ? index * 4 + 3 : index * 4 + 2);

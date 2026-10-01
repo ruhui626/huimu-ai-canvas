@@ -23,6 +23,21 @@ const mediaStagingTTL = 24 * time.Hour
 
 var mediaStagingMu sync.Mutex
 
+type mediaStoreError struct {
+	stage string
+	cause error
+}
+
+func (e *mediaStoreError) Error() string { return e.cause.Error() }
+func (e *mediaStoreError) Unwrap() error { return e.cause }
+
+func mediaStoreFailure(stage string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &mediaStoreError{stage: stage, cause: err}
+}
+
 // Reserve the maximum response size before opening a file. Temporary files are
 // sparse reservations, so concurrent downloads cannot oversubscribe this budget.
 func (s *Service) newMediaTemp(limit int64) (*os.File, error) {
@@ -197,22 +212,22 @@ func mediaUploadKey(taskID string, index int) *string {
 func (s *Service) storeTaskMediaFile(task *model.Task, index int, path, mimeType, kind string, existing *model.Resource) (*model.Resource, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
-		return nil, err
+		return nil, mediaStoreFailure("local_save", err)
 	}
 	if !info.Mode().IsRegular() {
-		return nil, errors.New("暂存作品不是普通文件")
+		return nil, mediaStoreFailure("local_save", errors.New("暂存作品不是普通文件"))
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, mediaStoreFailure("local_save", err)
 	}
 	defer file.Close()
 	info, err = file.Stat()
 	if err != nil {
-		return nil, err
+		return nil, mediaStoreFailure("local_save", err)
 	}
 	if !info.Mode().IsRegular() {
-		return nil, errors.New("暂存作品不是普通文件")
+		return nil, mediaStoreFailure("local_save", errors.New("暂存作品不是普通文件"))
 	}
 	width, height := 0, 0
 	if kind == "image" {
@@ -226,17 +241,17 @@ func (s *Service) storeTaskMediaFile(task *model.Task, index int, path, mimeType
 			webp := mimeType == "image/webp" && n >= 12 && string(head[:4]) == "RIFF" && string(head[8:12]) == "WEBP"
 			avif := mimeType == "image/avif" && n >= 16 && string(head[4:8]) == "ftyp" && (strings.Contains(string(head[8:]), "avif") || strings.Contains(string(head[8:]), "avis"))
 			if !webp && !avif {
-				return nil, fmt.Errorf("图片内容校验失败：%w", err)
+				return nil, mediaStoreFailure("local_save", fmt.Errorf("图片内容校验失败：%w", err))
 			}
 		}
 		width, height = config.Width, config.Height
 		if _, err := file.Seek(0, io.SeekStart); err != nil {
-			return nil, err
+			return nil, mediaStoreFailure("local_save", err)
 		}
 	}
 	day, err := s.reserveGeneratedResourceQuota(task.UserID, info.Size())
 	if err != nil {
-		return nil, err
+		return nil, mediaStoreFailure("register", err)
 	}
 	committed := false
 	defer func() {
@@ -246,21 +261,35 @@ func (s *Service) storeTaskMediaFile(task *model.Task, index int, path, mimeType
 	}()
 	var resource *model.Resource
 	if existing == nil {
-		resource, _, err = s.storeResourceWithWriter(task.UserID, kind, "generated."+extensionFromMimeType(mimeType), mimeType, info.Size(), width, height, 0, file, mediaUploadKey(task.ID, index), false, s.storeTaskMediaObject)
+		var objectWriteErr error
+		var objectWriteResource *model.Resource
+		writeObject := func(target *model.Resource, fileName string, body io.Reader) (string, error) {
+			objectWriteResource = target
+			etag, writeErr := s.storeTaskMediaObject(target, fileName, body)
+			objectWriteErr = writeErr
+			return etag, writeErr
+		}
+		resource, _, err = s.storeResourceWithWriter(task.UserID, kind, "generated."+extensionFromMimeType(mimeType), mimeType, info.Size(), width, height, 0, file, mediaUploadKey(task.ID, index), false, writeObject)
+		if err != nil {
+			if objectWriteErr != nil {
+				return nil, mediaStoreFailure(mediaObjectWriteStage(objectWriteResource), err)
+			}
+			return nil, mediaStoreFailure("register", err)
+		}
 	} else {
 		// Reuse the same object key after a failed upload; no orphan per retry.
 		resource = existing
 		if resource.UserID != task.UserID || resource.Size != info.Size() || resource.MimeType != mimeType {
-			return nil, errors.New("恢复文件与原始资源不一致")
+			return nil, mediaStoreFailure("register", errors.New("恢复文件与原始资源不一致"))
 		}
 		resource.ETag, err = s.storeTaskMediaObject(resource, "generated."+extensionFromMimeType(mimeType), file)
-		if err == nil {
-			resource.Status, resource.Error, resource.UpdatedAt = model.ResourceStatusReady, "", time.Now()
-			err = s.repo.SaveResource(resource)
+		if err != nil {
+			return nil, mediaStoreFailure(mediaObjectWriteStage(resource), err)
 		}
-	}
-	if err != nil {
-		return nil, err
+		resource.Status, resource.Error, resource.UpdatedAt = model.ResourceStatusReady, "", time.Now()
+		if err = s.repo.SaveResource(resource); err != nil {
+			return nil, mediaStoreFailure("register", err)
+		}
 	}
 	s.commitUserUploadQuota(task.UserID, info.Size())
 	committed = true
@@ -269,6 +298,13 @@ func (s *Service) storeTaskMediaFile(task *model.Task, index int, path, mimeType
 		s.maybeStartPlaybackTranscode(resource)
 	}
 	return resource, nil
+}
+
+func mediaObjectWriteStage(resource *model.Resource) string {
+	if resource != nil && resource.Provider == "local" {
+		return "local_save"
+	}
+	return "upload"
 }
 
 // Unlike ordinary uploads, generated output preserves an OSS failure for

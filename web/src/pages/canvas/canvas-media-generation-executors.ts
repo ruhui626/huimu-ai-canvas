@@ -7,6 +7,7 @@ import { nextCanvasVersionLabel } from "@/lib/canvas/canvas-layout";
 import { buildAudioGenerationMetadata, buildVideoGenerationMetadata, generationReferenceUrls, runCanvasGenerationTaskToConsumer } from "@/lib/canvas/canvas-project-generation";
 import { canvasGenerationPromptMetadata } from "@/lib/canvas/canvas-generation-submission";
 import { producedModelCandidateForGeneration } from "@/lib/canvas/produced-model";
+import { generatedAssetTitleBase } from "@/lib/generated-asset-title";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 
 import type { CanvasGenerationExecution } from "./canvas-generation-executor-types";
@@ -112,6 +113,9 @@ export async function executeVideoGeneration({
                 metadata: {
                     sourceNodeId: nodeId,
                     ...taskContext,
+                    assetTitleSourceNodeId: nodeId,
+                    assetTitleSourceNodeTitle: sourceNode?.title || videoNode.title,
+                    assetTitleBase: generatedAssetTitleBase({ kind: "video", sourceTitle: sourceNode?.title || videoNode.title, prompt: effectivePrompt }),
                     resolvedCharacterVersions: generationContext.resolvedCharacterVersions,
                     resolvedCharacterVoices: generationContext.resolvedCharacterVoices,
                     promptTemplateOperation: sourceNode?.metadata?.promptTemplateOperation,
@@ -182,7 +186,16 @@ export async function executeAudioGeneration({
                 prompt: effectivePrompt,
                 config: generationConfig,
                 signal: controller.signal,
-                metadata: { sourceNodeId: nodeId, ...taskContext, resolvedCharacterVersions: generationContext.resolvedCharacterVersions, resolvedCharacterVoiceKey: generationContext.resolvedCharacterVoices[0]?.voiceKey, ...skillMetadata },
+                metadata: {
+                    sourceNodeId: nodeId,
+                    ...taskContext,
+                    assetTitleSourceNodeId: nodeId,
+                    assetTitleSourceNodeTitle: sourceNode?.title || audioNode.title,
+                    assetTitleBase: generatedAssetTitleBase({ kind: "audio", sourceTitle: sourceNode?.title || audioNode.title, prompt: effectivePrompt }),
+                    resolvedCharacterVersions: generationContext.resolvedCharacterVersions,
+                    resolvedCharacterVoiceKey: generationContext.resolvedCharacterVoices[0]?.voiceKey,
+                    ...skillMetadata,
+                },
             },
             {
                 bindTask: (task) => bindGenerationTask(audioId, task),

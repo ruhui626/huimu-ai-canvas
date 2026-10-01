@@ -94,8 +94,23 @@ func (s *Service) registerRecoveredMediaAssets(task model.Task) error {
 		} else {
 			data["url"] = url
 		}
-		title := "生成作品"
-		metadata := map[string]any{"source": "generation-task", "generationEffectKey": effectKey, "taskId": task.ID, "outputIndex": index}
+		assets, err := s.repo.Assets(task.UserID)
+		if err != nil {
+			return err
+		}
+		titleContext := generatedAssetTitleContextFromTask(task, checkpoint.Mode)
+		titleNaming := allocateGeneratedAssetTitle(checkpoint.Mode, titleContext.BaseTitle, titleContext.SourceNodeID, assets)
+		title := titleNaming.Title
+		metadata := map[string]any{
+			"source":                         "generation-task",
+			"generationEffectKey":            effectKey,
+			"taskId":                         task.ID,
+			"outputIndex":                    index,
+			"generationTitleBase":            titleNaming.BaseTitle,
+			"generationTitleSequence":        titleNaming.Sequence,
+			"generationTitleSourceNodeId":    titleContext.SourceNodeID,
+			"generationTitleSourceNodeTitle": titleContext.SourceNodeTitle,
+		}
 		if projectID != "" {
 			metadata["projectIds"] = []string{projectID}
 		}

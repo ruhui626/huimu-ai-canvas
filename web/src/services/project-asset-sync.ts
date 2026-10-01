@@ -2,6 +2,7 @@ import { canvasNodeToAsset, declaredCanvasNodeAssetCategory, findCanvasNodeAsset
 import { canvasVideoAssetPreviewUrl } from "@/lib/canvas/canvas-media-preview";
 import { readImageMeta } from "@/lib/image-utils";
 import { parseBackendGenerationResult, type BackendGenerationResult } from "@/services/api/generation-task";
+import { resolveResourceUrl } from "@/services/api/resources";
 import { ApiError } from "@/services/api/request";
 import { linkProjectAsset, moveProjectAsset, updateProjectAssetCategory } from "@/services/api/projects";
 import type { GenerationTask, GenerationTaskOutput } from "@/services/api/task-center";
@@ -15,6 +16,7 @@ import { createProviderNeutralGenerationTaskEffectStore } from "@/services/provi
 import { getCachedResourceBlob } from "@/services/resource-blob-cache";
 import { saveRemoteUserDataNow } from "@/services/user-data-sync";
 import { getActiveUserScope } from "@/lib/user-scope";
+import { allocateGeneratedAssetTitle, generatedAssetTitleBase, generationTaskAssetTitleContext } from "@/lib/generated-asset-title";
 import { normalizeAssetCategory } from "@/lib/asset-category";
 import { runGenerationConsumer } from "@/services/generation-consumer-lifecycle";
 import { useAssetStore, type AssetCategory, type AssetStatus, type NewAsset } from "@/stores/use-asset-store";
@@ -202,12 +204,12 @@ export function projectGenerationTaskResult(task: GenerationTask, result?: Backe
 async function storedGenerationImage(result: NonNullable<BackendGenerationResult["images"]>[number], effectKey: string, scope: string, signal?: AbortSignal) {
     throwIfAborted(signal);
     if (result.storageKey) {
-        const url = await resolveImageUrl(result.storageKey, result.dataUrl);
-        if (!url) throw new Error("图片结果资源不可用");
-        const meta = result.width && result.height ? undefined : await readImageMeta(url, signal);
+        const displayUrl = await resolveImageUrl(result.storageKey, result.dataUrl);
+        if (!displayUrl) throw new Error("图片结果资源不可用");
+        const meta = result.width && result.height ? undefined : await readImageMeta(displayUrl, signal);
         throwIfAborted(signal);
         return {
-            url,
+            url: resolveResourceUrl(result.storageKey, result.dataUrl),
             storageKey: result.storageKey,
             width: result.width || meta?.width || 1024,
             height: result.height || meta?.height || 1024,
@@ -289,6 +291,14 @@ async function cachedRemoteGenerationVideo(video: NonNullable<BackendGenerationR
 async function generationOutputAsset(input: Parameters<MaterializeGenerationTaskOutput>[0], scope: string): Promise<NewAsset> {
     throwIfAborted(input.signal);
     const result = generationTaskResult(input.task);
+    const namingContext = generationTaskAssetTitleContext(input.task.inputJson);
+    const baseTitle = namingContext.baseTitle || generatedAssetTitleBase({ kind: input.output.mediaType, sourceTitle: namingContext.sourceNodeTitle, prompt: input.task.prompt, createdAt: input.task.createdAt });
+    const naming = allocateGeneratedAssetTitle({
+        kind: input.output.mediaType,
+        baseTitle,
+        sourceNodeId: namingContext.sourceNodeId,
+        assets: useAssetStore.getState().assets,
+    });
     const metadata = {
         source: "generation-task",
         generationEffectKey: input.effectKey,
@@ -297,6 +307,10 @@ async function generationOutputAsset(input: Parameters<MaterializeGenerationTask
         conversationId: input.task.clientContext?.conversationId,
         messageId: input.task.clientContext?.messageId,
         batchIndex: input.task.clientContext?.batchIndex,
+        generationTitleBase: naming.baseTitle,
+        generationTitleSequence: naming.sequence,
+        generationTitleSourceNodeId: namingContext.sourceNodeId || undefined,
+        generationTitleSourceNodeTitle: namingContext.sourceNodeTitle || undefined,
     };
 
     if (input.output.mediaType === "image") {
@@ -305,7 +319,7 @@ async function generationOutputAsset(input: Parameters<MaterializeGenerationTask
         const stored = await storedGenerationImage(image, input.effectKey, scope, input.signal);
         return {
             kind: "image",
-            title: "生成图片",
+            title: naming.title,
             coverUrl: stored.url,
             tags: ["生成"],
             status: "confirmed",
@@ -344,7 +358,7 @@ async function generationOutputAsset(input: Parameters<MaterializeGenerationTask
         if (!stored.url) throw new Error("视频结果资源不可用");
         return {
             kind: "video",
-            title: "生成视频",
+            title: naming.title,
             coverUrl: canvasVideoAssetPreviewUrl(stored.url),
             tags: ["生成"],
             status: "confirmed",
@@ -387,7 +401,7 @@ async function generationOutputAsset(input: Parameters<MaterializeGenerationTask
     if (!stored.url) throw new Error("音频结果资源不可用");
     return {
         kind: "audio",
-        title: "生成音频",
+        title: naming.title,
         coverUrl: "",
         tags: ["生成"],
         status: "confirmed",

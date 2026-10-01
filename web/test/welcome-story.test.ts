@@ -33,6 +33,9 @@ describe("welcome story", () => {
         expect(source).not.toContain("WelcomeContributorsCard");
         expect(source).not.toContain("ddcat-ai/open-ai-canvas");
         expect(source).not.toContain("workbench-preview");
+        expect(source).toContain('href="#welcome-ending"');
+        expect(source).toContain('id="welcome-ending"');
+        expect(source).toContain('document.getElementById("welcome-ending")?.scrollIntoView');
     });
 
     test("credits cover all looks separately from the code license", () => {

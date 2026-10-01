@@ -9,6 +9,7 @@ import { appQueryClient } from "@/lib/query-client";
 import { resourceFileUrl, resourceIdFromStorageKey, resourceStorageKey, uploadResourceFile } from "@/services/api/resources";
 import { parseAssetRecordList } from "@/lib/asset-record";
 import { assetForRemoteSync } from "@/lib/asset-remote-sync";
+import { normalizeManagedImageAssetList } from "@/services/asset-resource-locators";
 import type { Asset } from "@/stores/use-asset-store";
 import { flushAssetStorePersistence, useAssetStore } from "@/stores/use-asset-store";
 import type { CanvasProject } from "@/stores/canvas/use-canvas-store";
@@ -248,11 +249,11 @@ export async function loadAssetLibraryPage(options: Parameters<typeof listRemote
     // 分页列表是展示数据，不是同步快照。不要把每一页都合并进全局
     // asset store，否则滚动/翻页会不断重建并持久化整个素材数组。
     // 真正被画布引用的素材仍由 loadAssetsForUse 按 ID 拉取并写入 store。
-    return { ...result, assets: parseAssetRecordList(result.assets) };
+    return { ...result, assets: normalizeManagedImageAssetList(parseAssetRecordList(result.assets)) };
 }
 
 function acceptRemoteAssets(remoteAssets: Asset[]) {
-    const assets = parseAssetRecordList(remoteAssets);
+    const assets = normalizeManagedImageAssetList(parseAssetRecordList(remoteAssets));
     const current = new Map(useAssetStore.getState().assets.map((asset) => [asset.id, asset]));
     for (const asset of assets) {
         const local = current.get(asset.id);
@@ -327,10 +328,11 @@ export async function syncRemoteUserData(userId?: string | null) {
             }));
             if (useCanvasStore.getState().projects !== localProjects) throw new Error("本地画布仍在更新，已保留本地内容，请重新同步");
             useCanvasStore.getState().replaceProjects(projects);
-            useAssetStore.getState().replaceAssets(parseAssetRecordList(snapshot.assets));
+            const snapshotAssets = normalizeManagedImageAssetList(parseAssetRecordList(snapshot.assets));
+            useAssetStore.getState().replaceAssets(snapshotAssets);
             await Promise.all([flushCanvasStorePersistence(), flushAssetStorePersistence()]);
             acknowledgedProjects = new Map(projects.map((project) => [project.id, project]));
-            acknowledgedAssets = new Map(parseAssetRecordList(snapshot.assets).map((asset) => [asset.id, asset]));
+            acknowledgedAssets = new Map(snapshotAssets.map((asset) => [asset.id, asset]));
             remoteUserDataPhase = "ready";
         } catch (error) {
             remoteUserDataPhase = "failed";
@@ -723,7 +725,7 @@ export async function forceOverwriteRemoteCanvasSync(): Promise<CanvasAssetRebin
         if (epoch !== sessionEpoch) throw new Error("账号已切换，已停止修复保存");
         const remoteById = new Map(remoteAssets.map((asset) => [asset.id, asset]));
         const merged = [...remoteAssets, ...useAssetStore.getState().assets.filter((asset) => !remoteById.has(asset.id))];
-        const result = rebindInconsistentCanvasAssets(parseAssetRecordList(merged));
+        const result = rebindInconsistentCanvasAssets(normalizeManagedImageAssetList(parseAssetRecordList(merged)));
         await Promise.all([flushCanvasStorePersistence(), flushAssetStorePersistence()]);
         return result;
     });

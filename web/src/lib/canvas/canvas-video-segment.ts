@@ -3,6 +3,7 @@ import { fetchFile } from "@ffmpeg/util";
 import { getMediaBlob } from "@/services/file-storage";
 import { buildExtractAudioArgs, buildSegmentTrimArgs, SEGMENT_INPUT_NAME, SEGMENT_OUTPUT_NAME } from "./canvas-video-segment-args";
 import { loadFFmpeg } from "./canvas-video-merge";
+import { normalizeVideoSegmentRange } from "./canvas-video-segment-range";
 
 export type VideoSegmentRange = {
     startMs: number;
@@ -21,13 +22,6 @@ export type VideoSegmentProgress = {
 
 const INPUT_NAME = SEGMENT_INPUT_NAME;
 const OUTPUT_NAME = SEGMENT_OUTPUT_NAME;
-
-function assertValidRange(range: VideoSegmentRange, durationMs?: number) {
-    const startMs = Math.max(0, Math.round(range.startMs));
-    const endMs = Math.round(range.endMs);
-    if (endMs <= startMs) throw new Error("片段结束时间必须晚于开始时间");
-    if (durationMs !== undefined && endMs > Math.round(durationMs)) throw new Error("片段结束时间超过视频时长");
-}
 
 async function readVideoSourceBlob(source: VideoSegmentSource) {
     if (source.storageKey) {
@@ -50,13 +44,13 @@ async function runSegmentJob(
     onProgress?: (progress: VideoSegmentProgress) => void,
     outputType = "video/mp4",
 ) {
-    assertValidRange(range, durationMs);
+    const normalizedRange = normalizeVideoSegmentRange(range, durationMs);
     const ffmpeg = await loadFFmpeg(({ phase, progress }) => onProgress?.({ phase: phase === "loading" ? "loading" : "reading", progress }));
     const blob = await readVideoSourceBlob(source);
     onProgress?.({ phase: "reading", progress: 45 });
     await ffmpeg.writeFile(INPUT_NAME, await fetchFile(blob));
-    const startSec = String(range.startMs / 1000);
-    const durationSec = String((range.endMs - range.startMs) / 1000);
+    const startSec = String(normalizedRange.startMs / 1000);
+    const durationSec = String((normalizedRange.endMs - normalizedRange.startMs) / 1000);
     onProgress?.({ phase: "encoding", progress: 55 });
     try {
         const exitCode = await ffmpeg.exec(["-y", ...buildArgs(startSec, durationSec)]);
@@ -76,13 +70,13 @@ export async function trimVideoSegment(source: VideoSegmentSource, range: VideoS
 
 /** 从视频片段提取声音为 MP3；优先 libmp3lame，内核不支持时回退默认 mp3 编码器。 */
 export async function extractVideoAudio(source: VideoSegmentSource, range: VideoSegmentRange, durationMs?: number, onProgress?: (progress: VideoSegmentProgress) => void) {
+    const normalizedRange = normalizeVideoSegmentRange(range, durationMs);
     const ffmpeg = await loadFFmpeg(({ phase, progress }) => onProgress?.({ phase: phase === "loading" ? "loading" : "reading", progress }));
     const blob = await readVideoSourceBlob(source);
     onProgress?.({ phase: "reading", progress: 45 });
     await ffmpeg.writeFile(INPUT_NAME, await fetchFile(blob));
-    assertValidRange(range, durationMs);
-    const startSec = String(range.startMs / 1000);
-    const durationSec = String((range.endMs - range.startMs) / 1000);
+    const startSec = String(normalizedRange.startMs / 1000);
+    const durationSec = String((normalizedRange.endMs - normalizedRange.startMs) / 1000);
     onProgress?.({ phase: "encoding", progress: 55 });
     try {
         const args = (audioCodec: string) => buildExtractAudioArgs(audioCodec, startSec, durationSec);

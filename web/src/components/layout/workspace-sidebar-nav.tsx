@@ -47,6 +47,7 @@ function buildNav(features: FeatureAvailability, isAdmin: boolean): { groups: Wo
                 { ...toolItem("create", "/"), id: "home", title: "创作" },
                 { ...toolItem("projects", "/projects"), title: "短剧 Agent" },
                 { ...toolItem("canvas", "/canvas"), title: "自由画布" },
+                { ...toolItem("quick-video", "/tools/quick-video"), title: "常用工具" },
             ],
         },
         {

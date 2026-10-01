@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"infinite-canvas/backend/internal/kernel"
 	"infinite-canvas/backend/internal/model"
 
 	"gorm.io/gorm"
@@ -14,16 +15,23 @@ import (
 
 const registrationSettingKey = "registration"
 
+const (
+	RegistrationModeEmailCode = "email_code"
+	RegistrationModeEmailOnly = "email_only"
+)
+
 // RegistrationSettingRequest 的协议字段用指针区分「未提交」和「明确清空」：
 // 注册开关单独切换时不带协议字段，必须保留已保存的协议正文。
 type RegistrationSettingRequest struct {
 	Enabled          bool    `json:"enabled"`
+	Mode             *string `json:"mode"`
 	AgreementTitle   *string `json:"agreementTitle"`
 	AgreementContent *string `json:"agreementContent"`
 }
 
 type PublicRegistrationSetting struct {
 	Enabled          bool      `json:"enabled"`
+	Mode             string    `json:"mode"`
 	AgreementTitle   string    `json:"agreementTitle"`
 	AgreementContent string    `json:"agreementContent"`
 	UpdatedBy        string    `json:"updatedBy"`
@@ -33,6 +41,7 @@ type PublicRegistrationSetting struct {
 
 type registrationSettingValue struct {
 	Enabled          bool   `json:"enabled"`
+	Mode             string `json:"mode,omitempty"`
 	AgreementTitle   string `json:"agreementTitle"`
 	AgreementContent string `json:"agreementContent"`
 }
@@ -58,8 +67,15 @@ func (s *Service) UpdateRegistrationSetting(actor *model.User, req RegistrationS
 	}
 	nextValue := registrationSettingValue{
 		Enabled:          req.Enabled,
+		Mode:             currentValue.Mode,
 		AgreementTitle:   currentValue.AgreementTitle,
 		AgreementContent: currentValue.AgreementContent,
+	}
+	if req.Mode != nil {
+		nextValue.Mode = normalizeRegistrationMode(*req.Mode)
+		if nextValue.Mode == "" {
+			return nil, kernel.BadAuthRequest("注册方式无效")
+		}
 	}
 	if req.AgreementTitle != nil {
 		nextValue.AgreementTitle = strings.TrimSpace(*req.AgreementTitle)
@@ -84,6 +100,11 @@ func (s *Service) UpdateRegistrationSetting(actor *model.User, req RegistrationS
 func (s *Service) RegistrationEnabled() (bool, error) {
 	_, value, err := s.readRegistrationSetting()
 	return value.Enabled, err
+}
+
+func (s *Service) RegistrationMode() (string, error) {
+	_, value, err := s.readRegistrationSetting()
+	return value.Mode, err
 }
 
 // AgreementTitleForMessage 只用于错误提示。协议读取失败时不再返回品牌名兜底标题，
@@ -122,7 +143,7 @@ func (s *Service) defaultAgreementTitle() string {
 func (s *Service) readRegistrationSetting() (*model.SystemSetting, registrationSettingValue, error) {
 	setting, err := s.repo.SystemSetting(registrationSettingKey)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, registrationSettingValue{Enabled: registrationEnabledFromEnvironment()}, nil
+		return nil, registrationSettingValue{Enabled: registrationEnabledFromEnvironment(), Mode: RegistrationModeEmailCode}, nil
 	}
 	if err != nil {
 		return nil, registrationSettingValue{}, err
@@ -131,12 +152,18 @@ func (s *Service) readRegistrationSetting() (*model.SystemSetting, registrationS
 	if strings.TrimSpace(setting.ValueJSON) == "" || json.Unmarshal([]byte(setting.ValueJSON), &value) != nil {
 		return nil, registrationSettingValue{}, errors.New("用户注册配置格式无效")
 	}
+	if value.Mode == "" {
+		value.Mode = RegistrationModeEmailCode
+	} else if value.Mode = normalizeRegistrationMode(value.Mode); value.Mode == "" {
+		return nil, registrationSettingValue{}, errors.New("用户注册方式配置无效")
+	}
 	return setting, value, nil
 }
 
 func publicRegistrationSetting(setting *model.SystemSetting, value registrationSettingValue) *PublicRegistrationSetting {
 	result := &PublicRegistrationSetting{
 		Enabled:          value.Enabled,
+		Mode:             value.Mode,
 		AgreementTitle:   value.AgreementTitle,
 		AgreementContent: value.AgreementContent,
 	}
@@ -146,6 +173,17 @@ func publicRegistrationSetting(setting *model.SystemSetting, value registrationS
 		result.UpdatedAt = setting.UpdatedAt
 	}
 	return result
+}
+
+func normalizeRegistrationMode(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case RegistrationModeEmailCode:
+		return RegistrationModeEmailCode
+	case RegistrationModeEmailOnly:
+		return RegistrationModeEmailOnly
+	default:
+		return ""
+	}
 }
 
 func registrationEnabledFromEnvironment() bool {

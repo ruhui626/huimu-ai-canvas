@@ -58,7 +58,7 @@ func TestRegisterAcceptedTermsCreatesFirstAdmin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.User.Username != "new-user" || result.User.Role != model.UserRoleAdmin || result.Session == "" {
+	if result.User.Username != "new-user" || result.User.DisplayName != "new-user" || result.User.Role != model.UserRoleAdmin || result.Session == "" {
 		t.Fatalf("Register() result = %#v", result)
 	}
 }
@@ -83,7 +83,7 @@ func TestRegisterAcceptedTermsCreatesEmailUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.User.Role != model.UserRoleUser || result.Session == "" {
+	if result.User.DisplayName != "member" || result.User.Role != model.UserRoleUser || result.Session == "" {
 		t.Fatalf("Register() result = %#v", result)
 	}
 }

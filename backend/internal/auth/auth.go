@@ -86,6 +86,10 @@ func (s *Service) PublicAuthSettings() (*PublicAuthSettings, error) {
 	if err != nil {
 		return nil, err
 	}
+	registrationMode, err := s.RegistrationMode()
+	if err != nil {
+		return nil, err
+	}
 	emailEnabled, err := s.EmailEnabled()
 	if err != nil {
 		return nil, err
@@ -98,19 +102,17 @@ func (s *Service) PublicAuthSettings() (*PublicAuthSettings, error) {
 	if err != nil {
 		return nil, err
 	}
-	smsRegister, err := s.smsAvailable("register")
-	if err != nil {
-		return nil, err
-	}
 	smsBind, err := s.smsAvailable("bind")
 	if err != nil {
 		return nil, err
 	}
 	p.SMSLogin = p.SMSLogin && smsLogin
 	p.EmailLogin = p.EmailLogin && emailEnabled
-	p.SMSRegistration = p.SMSRegistration && smsRegister
-	p.EmailRegistration = p.EmailRegistration && emailEnabled
-	p.SMSAndEmailRegistration = p.SMSAndEmailRegistration && smsRegister && emailEnabled
+	// 普通注册由 registration.mode 统一决定；通用验证策略继续负责登录和绑定。
+	// 保留这些公开字段是为了兼容统一验证合同，但不再让短信策略形成第二套注册开关。
+	p.SMSRegistration = false
+	p.EmailRegistration = registrationMode == RegistrationModeEmailCode && emailEnabled
+	p.SMSAndEmailRegistration = false
 	agreementTitle, agreementContent := s.RegistrationAgreement()
 	return &PublicAuthSettings{
 		VerificationPolicy:    p,
@@ -120,7 +122,7 @@ func (s *Service) PublicAuthSettings() (*PublicAuthSettings, error) {
 		RegistrationEnabled:   registrationEnabled,
 		LinuxDOEnabled:        s.LinuxDOEnabled(),
 		EmailEnabled:          emailEnabled,
-		EmailCodeRequired:     p.EmailRegistration || p.SMSAndEmailRegistration,
+		EmailCodeRequired:     registrationMode == RegistrationModeEmailCode,
 		AgreementTitle:        agreementTitle,
 		AgreementContent:      agreementContent,
 	}, nil
@@ -161,36 +163,41 @@ func (s *Service) Register(req RegisterRequest) (*AuthSessionResult, error) {
 		if !registrationEnabled {
 			return nil, kernel.Forbidden("管理员未开放新用户注册")
 		}
-		if req.Ticket != "" {
+		if email == "" {
+			return nil, kernel.BadAuthRequest("请输入邮箱")
+		}
+		if err := s.validateRegistrationEmailDomain(email); err != nil {
+			return nil, err
+		}
+		registrationMode, err := s.RegistrationMode()
+		if err != nil {
+			return nil, err
+		}
+		switch registrationMode {
+		case RegistrationModeEmailOnly:
+			if req.Ticket != "" || req.EmailCode != "" || req.SMSCode != "" || req.Phone != "" {
+				return nil, kernel.BadAuthRequest("注册方式已更新，请刷新页面后重试")
+			}
+		case RegistrationModeEmailCode:
+			if req.Ticket == "" {
+				verifiedCode, err = s.VerifyRegistrationEmailCode(email, req.EmailCode)
+				if err != nil {
+					return nil, err
+				}
+				break
+			}
 			verification, err = s.verifyTicket("register", VerificationConfirm{Ticket: req.Ticket, EmailCode: req.EmailCode, SMSCode: req.SMSCode})
 			if err != nil {
 				return nil, err
 			}
-			if verification.Email != email || (verification.Phone != "" && strings.TrimSpace(req.Phone) != verification.Phone && "+86"+strings.TrimSpace(req.Phone) != verification.Phone) || (verification.Phone == "" && req.Phone != "") {
+			if verification.Method != "email" || verification.Email != email || verification.Phone != "" || req.Phone != "" {
 				return nil, invalidVerification()
 			}
-			phone = verification.Phone
 			if err := s.contactAvailable(email, phone, ""); err != nil {
 				return nil, err
 			}
-		} else {
-			p, err := s.verificationPolicy()
-			if err != nil {
-				return nil, err
-			}
-			if !p.allows("register", "email") || req.Phone != "" {
-				return nil, kernel.BadAuthRequest("请先获取本次注册验证码")
-			}
-			if email == "" {
-				return nil, kernel.BadAuthRequest("请输入邮箱")
-			}
-			if err := s.validateRegistrationEmailDomain(email); err != nil {
-				return nil, err
-			}
-			verifiedCode, err = s.VerifyRegistrationEmailCode(email, req.EmailCode)
-			if err != nil {
-				return nil, err
-			}
+		default:
+			return nil, kernel.BadAuthRequest("注册方式无效")
 		}
 	}
 	if _, err := s.repo.UserByUsername(username); err == nil {

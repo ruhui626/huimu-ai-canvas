@@ -1,0 +1,476 @@
+---
+title: 本地镜像打包与 Ubuntu 部署
+description: Windows 打包 Linux AMD64 镜像并部署到 Ubuntu
+---
+
+# 本地镜像打包与 Ubuntu 部署
+
+本文是当前项目的全新部署方案，不兼容旧版，也不复制旧账号、数据库、数据卷、素材目录或 `.env`。
+
+主要流程只有四步：
+
+1. Windows 构建 backend 和 web 镜像；
+2. 两个镜像导出为一个 tar 并上传；
+3. Ubuntu 执行 `docker load`，填写 `.env`；
+4. 执行 `docker compose up -d --wait`。
+
+服务器部署目录使用当前用户自己的目录：
+
+```text
+~/huimu-ai-canvas
+```
+
+不需要创建 `/opt` 目录，也不需要为部署文件执行 sudo。Docker 本身是否需要 sudo，取决于服务器当前用户是否已加入 `docker` 用户组。
+
+## 一、Windows 构建镜像
+
+在 PowerShell 中进入当前项目：
+
+```powershell
+Set-Location F:\Main\huimu-ai-canvas
+
+$Version = "0.2.0"
+$Commit = (git rev-parse --short HEAD).Trim()
+$BuildTime = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+```
+
+每次发布使用新的固定版本号，不使用 `latest`，也不要重新构建并覆盖已经部署过的 tag。
+
+### 1. 构建后端
+
+下面使用当前网络可访问的 Go 模块代理。`--build-arg` 是完整构建命令的一部分，不能单独执行。
+
+```powershell
+docker buildx build `
+  --platform linux/amd64 `
+  --load `
+  --file backend/Dockerfile `
+  --build-arg BUILD_VERSION=$Version `
+  --build-arg BUILD_COMMIT=$Commit `
+  --build-arg BUILD_TIME=$BuildTime `
+  --build-arg GOPROXY=https://goproxy.cn,direct `
+  --tag "huimu-ai-canvas-backend:$Version" `
+  .
+```
+
+后端必须使用仓库根目录作为构建上下文，因为镜像还会读取根目录 `VERSION`、`plugin-packages` 和 `backend/third_party`。
+
+### 2. 构建 Web
+
+```powershell
+docker buildx build `
+  --platform linux/amd64 `
+  --load `
+  --file Dockerfile `
+  --build-arg BUILD_VERSION=$Version `
+  --build-arg BUILD_COMMIT=$Commit `
+  --build-arg BUILD_TIME=$BuildTime `
+  --tag "huimu-ai-canvas-web:$Version" `
+  .
+```
+
+如果有合法的 tldraw License，可额外传入 `VITE_TLDRAW_LICENSE_KEY`。不要把真实 License 写入脚本、文档或 Git。
+
+### 3. 检查平台
+
+```powershell
+docker image inspect "huimu-ai-canvas-backend:$Version" --format '{{.Os}}/{{.Architecture}}'
+docker image inspect "huimu-ai-canvas-web:$Version" --format '{{.Os}}/{{.Architecture}}'
+```
+
+两条命令都必须返回：
+
+```text
+linux/amd64
+```
+
+### 4. 导出一个 tar
+
+```powershell
+$Archive = "huimu-ai-canvas-$Version-linux-amd64.tar"
+
+docker save `
+  --output $Archive `
+  "huimu-ai-canvas-backend:$Version" `
+  "huimu-ai-canvas-web:$Version"
+
+(Get-FileHash -Algorithm SHA256 $Archive).Hash.ToLower() + "  " + $Archive |
+  Set-Content -Encoding ascii "$Archive.sha256"
+```
+
+最终需要上传 5 个文件：
+
+```text
+huimu-ai-canvas-0.2.0-linux-amd64.tar
+huimu-ai-canvas-0.2.0-linux-amd64.tar.sha256
+docker-compose.deploy.yml
+docker-compose.local-images.yml
+deploy-local-images.env.example
+```
+
+PostgreSQL 和 Redis 不放入业务 tar，由 Ubuntu 单独拉取。
+
+## 二、停止旧版
+
+登录 Ubuntu 服务器后，进入旧项目目录。旧文档默认目录是 `~/huimuai`：
+
+```bash
+cd ~/huimuai
+docker compose --env-file .env -f docker-compose.offline.yml down
+```
+
+这会停止并删除旧容器和旧网络，同时释放宿主机 `3000`，但不会删除旧数据库和素材卷。不要执行 `down -v`。
+
+确认端口已经释放：
+
+```bash
+ss -ltnp | grep ':3000' || true
+```
+
+新版验证完成前，先不要删除旧数据卷。
+
+## 三、Ubuntu 首次部署
+
+### 1. 创建普通用户目录
+
+```bash
+mkdir -p ~/huimu-ai-canvas
+cd ~/huimu-ai-canvas
+```
+
+把前面的 5 个文件上传到这个目录。这里不需要 sudo。
+
+### 2. 校验并导入镜像
+
+```bash
+sha256sum --check huimu-ai-canvas-0.2.0-linux-amd64.tar.sha256
+docker load --input huimu-ai-canvas-0.2.0-linux-amd64.tar
+docker image ls | grep huimu-ai-canvas
+```
+
+### 3. 创建 `.env`
+
+```bash
+cp deploy-local-images.env.example .env
+openssl rand -hex 32
+nano .env
+```
+
+把随机密码分别填入 `POSTGRES_PASSWORD` 和 `DATABASE_URL`，两处必须完全一致。完整结构如下：
+
+```dotenv
+COMPOSE_PROJECT_NAME=huimu-ai-canvas
+COMPOSE_FILE=docker-compose.deploy.yml:docker-compose.local-images.yml
+
+POSTGRES_DB=open_ai_canvas
+POSTGRES_USER=open_ai_canvas
+POSTGRES_PASSWORD=填写随机生成的十六进制密码
+DATABASE_URL=postgresql://open_ai_canvas:填写同一密码@postgres:5432/open_ai_canvas?sslmode=disable
+
+CANVAS_BACKEND_IMAGE=huimu-ai-canvas-backend:0.2.0
+CANVAS_WEB_IMAGE=huimu-ai-canvas-web:0.2.0
+CANVAS_HTTP_PORT=3000
+
+CANVAS_CORS_ORIGINS=https://qianxingai.dxskc.com
+CANVAS_PUBLIC_BASE_URL=https://qianxingai.dxskc.com
+CANVAS_WORKER_CONCURRENCY=3
+CANVAS_CHANNEL_CONCURRENCY=3
+CANVAS_SHUTDOWN_TIMEOUT=10m
+CANVAS_REGISTRATION_ENABLED=false
+
+CANVAS_ALLOW_PRIVATE_UPSTREAMS=false
+CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS=
+CANVAS_UPDATER_TOKEN=
+CANVAS_UPDATER_SOCKET_DIR=/run/open-ai-canvas-updater
+```
+
+限制配置文件权限：
+
+```bash
+chmod 600 .env
+```
+
+`COMPOSE_PROJECT_NAME` 固定当前项目的数据卷和网络名称。`COMPOSE_FILE` 让 Ubuntu 自动组合正式部署文件和本地镜像覆盖文件，后续不必重复写 `-p` 和两个 `-f`。
+
+### 4. 拉取 PostgreSQL 和 Redis
+
+```bash
+docker compose pull postgres redis
+```
+
+本地覆盖文件只禁止 migrate、backend、web 拉取远程镜像，不影响 PostgreSQL 和 Redis。
+
+### 5. 启动
+
+```bash
+docker compose config --quiet
+docker compose up -d --remove-orphans --wait --wait-timeout 600
+docker compose ps --all
+```
+
+正常状态：
+
+- `postgres`：healthy；
+- `redis`：healthy；
+- `migrate`：`Exited (0)`，这是迁移成功后的正常状态；
+- `backend`：healthy；
+- `web`：healthy。
+
+当前项目必须保留独立的 migrate 服务。Backend 设置 `CANVAS_AUTO_MIGRATE=false`，只有 migrate 成功后才能启动。
+
+### 6. 检查日志和健康接口
+
+```bash
+docker compose logs --tail=200 migrate
+docker compose logs --tail=200 backend
+docker compose logs --tail=200 web
+
+curl -fsS http://127.0.0.1:3000/ >/dev/null
+curl -fsS http://127.0.0.1:3000/api/health/live
+curl -fsS http://127.0.0.1:3000/api/health/ready
+```
+
+只有 Web 映射宿主机 `3000`。Backend 的 `8080`、PostgreSQL 的 `5432` 和 Redis 的 `6379` 不对外暴露。
+
+健康接口通过后，还要实际验证登录、新建项目和画布、上传素材、生成任务以及容器重启后的数据持久化。
+
+全新空数据库如果尚未创建管理员，而注册页面明确提示注册关闭，可临时把 `CANVAS_REGISTRATION_ENABLED` 改成 `true`：
+
+```bash
+nano .env
+docker compose up -d --force-recreate backend web
+```
+
+创建第一个管理员后立即改回 `false`，再次执行同一条重建命令。不要让公开注册长时间保持开启。
+
+## 四、Nginx 和 HTTPS
+
+域名固定为：
+
+```text
+https://qianxingai.dxskc.com
+```
+
+如果旧站已经使用这个域名和 `127.0.0.1:3000`，停止旧容器并启动新版后，Nginx通常不需要换端口。先检查：
+
+```bash
+sudo nginx -t
+sudo nginx -T | grep -n 'qianxingai.dxskc.com\|proxy_pass'
+```
+
+当前项目推荐的代理配置如下。流式接口单独关闭缓冲，普通请求不复制长超时和禁缓冲规则：
+
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name qianxingai.dxskc.com;
+
+    client_max_body_size 1024m;
+
+    location ~ ^/api/(tasks/[^/]+/text-events|agent/runs/[^/]+/events|ai/system/[^/]+/(responses|chat/completions|models/[^/]+:streamGenerateContent))$ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        gzip off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+修改配置后执行：
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+curl -fsS https://qianxingai.dxskc.com/api/health/ready
+```
+
+如果证书尚未配置：
+
+```bash
+sudo apt update
+sudo apt install -y nginx certbot python3-certbot-nginx
+sudo certbot --nginx -d qianxingai.dxskc.com
+```
+
+公网只开放 80/443。使用防火墙或云安全组阻止公网直接访问 3000，不要开放 8080、5432 或 6379。
+
+## 五、后续更新
+
+Windows 使用新版本号重新构建并导出，例如 `0.2.1`。旧镜像和旧 tar 先保留，不要覆盖。
+
+把新 tar 和校验文件上传到 `~/huimu-ai-canvas` 后：
+
+```bash
+cd ~/huimu-ai-canvas
+sha256sum --check huimu-ai-canvas-0.2.1-linux-amd64.tar.sha256
+docker load --input huimu-ai-canvas-0.2.1-linux-amd64.tar
+nano .env
+```
+
+只修改：
+
+```dotenv
+CANVAS_BACKEND_IMAGE=huimu-ai-canvas-backend:0.2.1
+CANVAS_WEB_IMAGE=huimu-ai-canvas-web:0.2.1
+```
+
+然后启动：
+
+```bash
+docker compose config --quiet
+docker compose up -d --remove-orphans --wait --wait-timeout 600
+docker compose ps --all
+docker compose logs --tail=200 migrate backend
+```
+
+更新不会删除 PostgreSQL、Redis、backend-data 或 web-data。不要执行 `docker compose down -v`。
+
+## 六、更新前备份和回退
+
+更新前至少备份 PostgreSQL、后端数据和 `.env`：
+
+```bash
+cd ~/huimu-ai-canvas
+BackupStamp="$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "backups/$BackupStamp"
+cp .env "backups/$BackupStamp/env.backup"
+chmod 600 "backups/$BackupStamp/env.backup"
+
+docker compose exec -T postgres \
+  pg_dump -U open_ai_canvas -d open_ai_canvas -Fc \
+  > "backups/$BackupStamp/postgres.dump"
+
+docker run --rm \
+  -v huimu-ai-canvas_backend-data:/source:ro \
+  -v "$PWD/backups/$BackupStamp:/backup" \
+  alpine:3.22 \
+  tar -czf /backup/backend-data.tar.gz -C /source .
+```
+
+如果确认新版本没有不兼容的数据库迁移，回退时把 `.env` 中两个镜像 tag 改回旧版本，然后执行：
+
+```bash
+docker compose up -d --remove-orphans --wait --wait-timeout 600
+```
+
+如果迁移已经改变数据库或无法确认兼容性，不要只切换旧镜像。应进入维护窗口，同时恢复更新前的 PostgreSQL dump 和同一时间点的 backend-data 备份。
+
+Docker 数据卷本身不是备份。数据库 dump、backend-data 归档、`.env` 备份和镜像 tar 应保存到服务器之外的受控位置。
+
+## 七、新版确认后清理旧版
+
+确认新版登录、画布、素材、任务和 HTTPS 均正常后，再检查旧项目遗留资源：
+
+```bash
+docker ps -a --filter label=com.docker.compose.project=huimu
+docker volume ls --filter label=com.docker.compose.project=huimu
+```
+
+只有明确不再需要旧数据时，才能删除列出的旧卷。删除前逐个核对名称，不要使用宽范围匹配，也不要删除 `huimu-ai-canvas` 项目的卷。
+
+旧部署目录可先改名保留几天：
+
+```bash
+mv ~/huimuai ~/huimuai.retired
+```
+
+确认无需回退后再手工删除。
+
+## 八、服务器从源码构建（备用）
+
+网络和服务器资源允许时，可直接使用当前仓库源码：
+
+```bash
+git clone https://github.com/ddcat-ai/open-ai-canvas.git ~/huimu-ai-canvas-source
+cd ~/huimu-ai-canvas-source
+cp deploy-local-images.env.example .env
+nano .env
+```
+
+将 `.env` 调整为：
+
+```dotenv
+COMPOSE_PROJECT_NAME=huimu-ai-canvas
+COMPOSE_FILE=docker-compose.deploy.yml:docker-compose.build.yml
+CANVAS_BACKEND_IMAGE=open-ai-canvas-backend:server
+CANVAS_WEB_IMAGE=open-ai-canvas-web:server
+```
+
+填写数据库密码和其他生产配置后执行：
+
+```bash
+docker compose build backend web
+docker compose up -d --remove-orphans --wait --wait-timeout 600
+```
+
+源码构建与本地镜像部署都占用宿主机 3000，不能同时启动。该方式仍使用独立 migrate 服务，不依赖任何旧项目文件。
+
+## 九、本地 tag 与 digest
+
+Compose允许 `image:tag` 和 `image@sha256:digest` 两种引用。本地 `docker save` / `docker load` 通常只有本地 tag 和 image ID，没有远程仓库提供的 `RepoDigest`。
+
+因此本地镜像方案：
+
+- 可以使用固定版本 tag；
+- 不能使用当前 GHCR 在线更新器的仓库 digest 校验；
+- 不通过 `docker compose pull` 更新业务镜像；
+- 使用 tar 的 SHA-256 验证上传文件；
+- 使用唯一版本号、旧镜像和更新前备份进行手工回退。
+
+`docker-compose.local-images.yml` 只为 migrate、backend、web 设置 `pull_policy: never`，不会修改正式 `docker-compose.deploy.yml` 的 digest 部署规则。
+
+## 十、常见问题
+
+### migrate 不是 `Exited (0)`
+
+```bash
+docker compose logs --tail=300 migrate postgres
+```
+
+检查 PostgreSQL 是否 healthy、两个密码是否一致。不要跳过 migrate 强行启动 backend。
+
+### 提示业务镜像不存在
+
+```bash
+docker image ls | grep huimu-ai-canvas
+grep '^CANVAS_.*_IMAGE=' .env
+```
+
+镜像名和版本必须逐字一致。不要删除 `pull_policy: never` 来掩盖导入错误。
+
+### 后端不健康
+
+```bash
+docker compose logs --tail=300 backend
+curl -v http://127.0.0.1:3000/api/health/live
+curl -v http://127.0.0.1:3000/api/health/ready
+```
+
+`live` 成功但 `ready` 失败，通常表示数据库、迁移或运行时依赖没有就绪。
+
+### 数据看起来消失
+
+```bash
+docker volume ls | grep huimu-ai-canvas
+grep '^COMPOSE_PROJECT_NAME=' .env
+```
+
+Compose 项目名变化会创建另一组命名卷。不要在排查时执行 `down -v` 或手工删除卷。

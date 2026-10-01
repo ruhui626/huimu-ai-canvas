@@ -48,9 +48,6 @@ func (s *Service) verificationHash(value string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 func (s *Service) checkVerificationPolicy(p VerificationPolicy, purpose, method string) error {
-	if !p.allows(purpose, method) {
-		return kernel.Forbidden("此验证方式未开启，请刷新页面")
-	}
 	if purpose == "register" {
 		enabled, err := s.RegistrationEnabled()
 		if err != nil {
@@ -59,6 +56,17 @@ func (s *Service) checkVerificationPolicy(p VerificationPolicy, purpose, method 
 		if !enabled {
 			return kernel.Forbidden("管理员未开放新用户注册")
 		}
+		mode, err := s.RegistrationMode()
+		if err != nil {
+			return err
+		}
+		if mode != RegistrationModeEmailCode || method != "email" {
+			return kernel.Forbidden("当前注册方式不使用此验证码，请刷新页面")
+		}
+		return nil
+	}
+	if !p.allows(purpose, method) {
+		return kernel.Forbidden("此验证方式未开启，请刷新页面")
 	}
 	return nil
 }

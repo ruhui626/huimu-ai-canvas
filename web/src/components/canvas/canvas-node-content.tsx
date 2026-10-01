@@ -23,7 +23,7 @@ import { formatBytes } from "@/lib/image-utils";
 import type { GenerationTask } from "@/services/api/task-center";
 import { resolveMediaUrl } from "@/services/file-storage";
 import { prepareCanvasImage } from "@/services/canvas-image-loader";
-import { getResourceAccess, resolveResourceAccessURL } from "@/services/api/resources";
+import { getResourceAccess, refreshResourceAccess, resolveResourceAccessURL } from "@/services/api/resources";
 import { getActiveUserScope } from "@/lib/user-scope";
 import { hydrateCanvasVideoPreview } from "@/services/canvas-video-preview";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
@@ -859,7 +859,7 @@ function ImageContent({
 }: Pick<CanvasNodeContentProps, "node" | "theme" | "isBatchRoot" | "batchCount" | "batchPreviewNodes" | "batchExpanded" | "batchOpening" | "batchRecovering" | "onToggleBatch">) {
     const imageContainerRef = useRef<HTMLDivElement>(null);
     const nearViewport = useNearViewport(imageContainerRef);
-    const { url, loading, originalWidth, originalHeight } = useNodeResourceUrl(node, nearViewport, "thumbnail");
+    const { url, loading, originalWidth, originalHeight } = useNodeResourceUrl(node, nearViewport, "original");
     const importedFromLibTV = node.metadata?.importSource?.provider === "libtv";
     const { updateMediaNode } = useCanvasNodeActions();
     const measuredSizeRef = useRef<{ width: number; height: number } | null>(null);
@@ -962,7 +962,7 @@ function RetainedCanvasImage({ identity, src, storageKey, fallbackSrc, originalS
                 const resourceId = target.storageKey?.startsWith("resource:") ? target.storageKey.slice("resource:".length) : "";
                 if (!resourceId) return;
                 try {
-                    const access = await getResourceAccess(target.storageKey, "display", "original");
+                    const access = await refreshResourceAccess(target.storageKey, "display", "original");
                     const originalURL = resolveResourceAccessURL(access.url);
                     if (!isCurrent() || !originalURL || originalURL === target.src) return;
                     const original = await prepareCanvasImage(originalURL, controller.signal);
@@ -1002,7 +1002,7 @@ function RetainedCanvasImage({ identity, src, storageKey, fallbackSrc, originalS
     );
 }
 
-function useNodeResourceUrl(node: CanvasNodeData, eager: boolean, variant: "original" | "thumbnail" = "original") {
+function useNodeResourceUrl(node: CanvasNodeData, eager: boolean, variant: "original" = "original") {
     const storageKey = node.metadata?.storageKey || "";
     const rawContent = node.metadata?.content || "";
     const content = node.type === CanvasNodeType.Video && node.metadata?.importSource?.provider === "libtv" ? buildLibTVVideoSourceUrl(rawContent) : rawContent;
@@ -1048,8 +1048,7 @@ function useNodeResourceUrl(node: CanvasNodeData, eager: boolean, variant: "orig
         };
     }, [eager, fallback, identity, isLazyVisual, isRemoteResource, storageKey, variant]);
 
-    const isThumbnail = variant === "thumbnail";
-    return { url: current.url, loading: current.loading, originalWidth: isThumbnail ? current.originalWidth : undefined, originalHeight: isThumbnail ? current.originalHeight : undefined };
+    return { url: current.url, loading: current.loading, originalWidth: current.originalWidth, originalHeight: current.originalHeight };
 }
 
 function useNearViewport(ref: RefObject<Element | null>) {

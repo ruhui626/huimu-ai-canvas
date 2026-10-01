@@ -111,6 +111,7 @@ export type TaskLog = {
     level: "info" | "warn" | "error";
     stage: string;
     errorCode?: string;
+    detail?: string;
     provenance: "task_state" | "provider_observation" | "background_reconcile" | "manual_refresh" | "backend";
     observedAt?: string;
     createdAt: string;
@@ -314,13 +315,14 @@ export async function listTaskLogs(id: string) {
 }
 
 export function formatTaskLog(log: TaskLog) {
-    return [`stage=${log.stage}`, ...(log.errorCode ? [`error=${log.errorCode}`] : []), `provenance=${log.provenance}`, ...(log.observedAt ? [`observedAt=${log.observedAt}`] : [])].join(" ");
+    return [`stage=${log.stage}`, ...(log.errorCode ? [`error=${log.errorCode}`] : []), `provenance=${log.provenance}`, ...(log.observedAt ? [`observedAt=${log.observedAt}`] : []), ...(log.detail ? [`detail=${log.detail}`] : [])].join(" ");
 }
 
 export function projectBackendSafeTaskLog(taskId: string, raw: { level?: unknown; message?: unknown; payload?: unknown; createdAt?: unknown }, index: number): TaskLog {
     const text = [raw.message, raw.payload].filter((value): value is string => typeof value === "string").join(" ");
     const stage = safeTaskLogStage(text) || "backend_event";
     const errorCode = safeTaskLogErrorCode(text);
+    const detail = safeTaskLogDetail(text);
     const createdAt = typeof raw.createdAt === "string" && Number.isFinite(Date.parse(raw.createdAt)) ? raw.createdAt : "1970-01-01T00:00:00.000Z";
     return {
         id: `safe:${taskId}:${index}`,
@@ -328,6 +330,7 @@ export function projectBackendSafeTaskLog(taskId: string, raw: { level?: unknown
         level: raw.level === "error" ? "error" : raw.level === "warn" ? "warn" : "info",
         stage,
         ...(errorCode ? { errorCode } : {}),
+        ...(detail ? { detail } : {}),
         provenance: "backend",
         createdAt,
     };
@@ -335,8 +338,23 @@ export function projectBackendSafeTaskLog(taskId: string, raw: { level?: unknown
 
 function safeTaskLogStage(value: unknown) {
     if (typeof value !== "string") return undefined;
+    if (value.includes("上传对象存储失败") || value.includes("上传 OSS 失败")) return "upload";
+    if (value.includes("保存本地文件失败")) return "local_save";
+    if (value.includes("登记作品失败")) return "register";
+    if (value.includes("下载结果失败")) return "download";
+    if (value.includes("任务已进入队列")) return "queued";
+    if (value.includes("后端任务开始处理")) return "processing";
+    if (value.includes("任务结果保存失败") || value.includes("后台任务处理失败")) return "failed";
     const match = value.match(/(?:^|[^a-z0-9_])(queued|submitting|submitted|generating|submission_unknown|processing|completed|succeeded|failed|cancelled)(?:$|[^a-z0-9_])/i);
     return match?.[1]?.toLowerCase();
+}
+
+function safeTaskLogDetail(value: unknown) {
+    if (typeof value !== "string") return undefined;
+    const marker = "作品已生成，但保存未完成：";
+    const start = value.indexOf(marker);
+    if (start < 0) return undefined;
+    return value.slice(start, start + 600).trim();
 }
 
 const SAFE_TASK_LOG_ERROR_CODES = new Set(["provider_query_failed", "provider_submission_unknown", "provider_reference_invalid"]);

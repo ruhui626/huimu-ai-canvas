@@ -1,0 +1,9 @@
+services:
+  migrate:
+    pull_policy: never
+
+  backend:
+    pull_policy: never
+
+  web:
+    pull_policy: never

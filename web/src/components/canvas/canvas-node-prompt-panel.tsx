@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSPropertie
 import { ArrowLeftRight, ArrowUp, AtSign, Boxes, ChevronDown, FileText, GripVertical, ImageIcon, ImagePlus, LayoutList, Link2, LoaderCircle, Maximize2, Music2, Pencil, SlidersHorizontal, UserRound, Video, WandSparkles, X } from "lucide-react";
 
 import { ModelPicker } from "@/components/model-picker";
+import { CachedResourceImage } from "@/components/cached-resource-image";
 import { defaultConfig, modelOptionName, resolveModelChannel, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { resolveCanvasGenerationModel } from "@/lib/canvas/canvas-project-generation";
 import { canonicalGenerationMetadata } from "@/lib/canvas/generation-contract";
@@ -935,10 +936,29 @@ function ConnectedReferenceShelf({
 }
 
 function ReferenceThumbnail({ reference }: { reference: CanvasResourceReference }) {
-    if (reference.kind === "image" && reference.previewUrl) return <img src={reference.previewUrl} alt="" className="size-full object-cover" />;
-    if (reference.kind === "video" && reference.previewUrl) return <img src={reference.previewUrl} alt="" className="size-full bg-black object-cover" loading="lazy" decoding="async" />;
-    if (reference.kind === "character" && reference.previewUrl) return <img src={reference.previewUrl} alt="" className="size-full bg-black/5 object-contain" />;
+    const previewStorageKey = reference.kind === "video" ? reference.previewStorageKey : reference.storageKey;
+    const visualReference = reference.kind === "image" || reference.kind === "video" || reference.kind === "character";
+    const fallback = <ReferenceThumbnailFallback reference={reference} />;
+    if (visualReference && (reference.previewUrl || previewStorageKey)) {
+        return (
+            <CachedResourceImage
+                storageKey={previewStorageKey}
+                src={reference.previewUrl}
+                alt=""
+                eager
+                loading={reference.kind === "video" ? "lazy" : undefined}
+                decoding={reference.kind === "video" ? "async" : undefined}
+                className={reference.kind === "character" ? "size-full bg-black/5 object-contain" : reference.kind === "video" ? "size-full bg-black object-cover" : "size-full object-cover"}
+                wrapperClassName="size-full"
+                fallback={fallback}
+                loadingFallback={fallback}
+            />
+        );
+    }
+    return fallback;
+}
 
+function ReferenceThumbnailFallback({ reference }: { reference: CanvasResourceReference }) {
     const Icon = reference.sourceType === CanvasNodeType.Drawing ? Pencil : reference.kind === "character" ? UserRound : reference.kind === "audio" ? Music2 : reference.kind === "video" ? Video : reference.kind === "image" ? ImageIcon : FileText;
     return (
         <span className="grid size-full place-items-center bg-black/10 text-current dark:bg-white/10">

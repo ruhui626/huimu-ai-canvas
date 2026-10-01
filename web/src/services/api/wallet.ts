@@ -146,8 +146,11 @@ export type LinuxDOSetting = {
     updatedAt?: string;
 };
 
+export type RegistrationMode = "email_code" | "email_only";
+
 export type RegistrationSetting = {
     enabled: boolean;
+    mode: RegistrationMode;
     agreementTitle?: string;
     agreementContent?: string;
     updatedBy?: string;
@@ -272,13 +275,17 @@ export function updateAdminLinuxDOSetting(input: Partial<LinuxDOSetting>) {
     return http.patch<{ setting: LinuxDOSetting }>("/admin/settings/linuxdo", input);
 }
 
-export function getAdminRegistrationSetting() {
-    return http.get<{ setting: RegistrationSetting }>("/admin/settings/registration");
+export async function getAdminRegistrationSetting() {
+    const result = await http.get<{ setting: RegistrationSetting }>("/admin/settings/registration");
+    return { ...result, setting: { ...result.setting, mode: result.setting.mode || "email_code" } };
 }
 
-export function updateAdminRegistrationSetting(input: { enabled: boolean; agreementTitle?: string; agreementContent?: string } | boolean) {
+export async function updateAdminRegistrationSetting(input: { enabled: boolean; mode?: RegistrationMode; agreementTitle?: string; agreementContent?: string } | boolean) {
     const payload = typeof input === "boolean" ? { enabled: input } : input;
-    return http.patch<{ setting: RegistrationSetting }>("/admin/settings/registration", payload);
+    const result = await http.patch<{ setting: RegistrationSetting }>("/admin/settings/registration", payload);
+    if (!result.setting.mode) throw new Error("当前后端版本不支持注册方式设置，请更新并重启后端");
+    if (typeof input !== "boolean" && input.mode && result.setting.mode !== input.mode) throw new Error("后端未保存本次注册方式，请重新读取后核对");
+    return result;
 }
 
 export function getAdminEmailSetting() {

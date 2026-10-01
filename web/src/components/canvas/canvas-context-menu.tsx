@@ -289,6 +289,7 @@ function AddNodeContextMenu({ parentPosition, workspaceMode, isProjectLinked, on
     const installations = usePluginStore((state) => state.installations);
     const pluginStates = usePluginStore((state) => state.pluginStates);
     const left = getSubmenuLeft(parentPosition.left);
+    const top = getSubmenuTop(parentPosition.top);
     const createContext: AddNodeMenuContext = {
         workspaceMode,
         isProjectLinked,
@@ -327,8 +328,8 @@ function AddNodeContextMenu({ parentPosition, workspaceMode, isProjectLinked, on
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: aceternityMotion.duration.instant, ease: aceternityMotion.easing.enter }}
-            className="aceternity-floating-panel fixed z-[var(--z-popover)] w-[360px] origin-top overflow-hidden rounded-[var(--dock-radius)] border p-2 backdrop-blur-2xl"
-            style={{ left, top: parentPosition.top, background: theme.spatial.elevated, borderColor: theme.toolbar.border, color: theme.node.text }}
+            className="aceternity-floating-panel fixed z-[var(--z-popover)] w-[260px] max-w-[calc(100vw-24px)] origin-top overflow-hidden rounded-[var(--dock-radius)] border p-2 backdrop-blur-2xl"
+            style={{ left, top, background: theme.spatial.elevated, borderColor: theme.toolbar.border, color: theme.node.text }}
             onContextMenu={(event) => event.preventDefault()}
             onPointerDown={(event) => event.stopPropagation()}
         >
@@ -387,7 +388,14 @@ function getContextMenuPosition(menu: ContextMenuState, hasMultiSelection = fals
 
 function getSubmenuLeft(parentLeft: number) {
     if (typeof window === "undefined") return parentLeft + 192;
-    return parentLeft + 224 + 8 + 360 <= window.innerWidth - 12 ? parentLeft + 232 : Math.max(12, parentLeft - 368);
+    const submenuWidth = Math.min(260, window.innerWidth - 24);
+    return parentLeft + 224 + 8 + submenuWidth <= window.innerWidth - 12 ? parentLeft + 232 : Math.max(12, parentLeft - submenuWidth - 8);
+}
+
+function getSubmenuTop(parentTop: number) {
+    if (typeof window === "undefined") return parentTop;
+    const submenuMaxHeight = window.innerHeight * 0.7;
+    return clamp(parentTop, 68, Math.max(68, window.innerHeight - submenuMaxHeight - 12));
 }
 
 function clamp(value: number, min: number, max: number) {

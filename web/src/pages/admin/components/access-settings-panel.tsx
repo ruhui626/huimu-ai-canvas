@@ -1,6 +1,6 @@
 import { App, Button, Form, Input, Skeleton } from "antd";
 import { Switch } from "@/pages/admin/ui/controls";
-import { AlertTriangle, BadgeCheck, ChevronDown, FileText, Globe2, KeyRound, LockKeyhole, RefreshCw, RotateCcw, Save, ShieldCheck, Sparkles, UserPlus, UsersRound } from "lucide-react";
+import { AlertTriangle, BadgeCheck, ChevronDown, FileText, Globe2, KeyRound, LockKeyhole, Mail, RefreshCw, RotateCcw, Save, ShieldCheck, Sparkles, UserPlus, UsersRound } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useBlocker } from "react-router";
 
@@ -152,7 +152,7 @@ export default function AccessSettingsPanel() {
     };
 
     const saveAgreement = async () => {
-        if (!registration || savingAgreement) return;
+        if (!registration || savingAgreement || savingRegistration) return;
         setSavingAgreement(true);
         setSaveError("");
         try {
@@ -176,7 +176,7 @@ export default function AccessSettingsPanel() {
     };
 
     const resetAgreementDraft = () => {
-        if (!registration || savingAgreement) return;
+        if (!registration || savingAgreement || savingRegistration) return;
         setAgreementTitle(registration.agreementTitle || "");
         setAgreementContent(registration.agreementContent || "");
         setAgreementDirty(false);
@@ -214,8 +214,22 @@ export default function AccessSettingsPanel() {
     };
 
     const requestRegistrationChange = (enabled: boolean) => {
-        if (!registration || enabled === registration.enabled || savingRegistration) return;
+        if (!registration || enabled === registration.enabled || savingRegistration || savingAgreement) return;
         void toggleRegistration(enabled).catch(() => undefined);
+    };
+
+    const changeRegistrationMode = async (mode: RegistrationSetting["mode"]) => {
+        if (!registration || mode === registration.mode || savingRegistration || savingAgreement) return;
+        setSavingRegistration(true);
+        try {
+            const data = await updateAdminRegistrationSetting({ enabled: registration.enabled, mode });
+            setRegistration(data.setting);
+            message.success(mode === "email_code" ? "已启用邮箱验证码注册" : "已启用邮箱免验证码注册");
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "更新注册方式失败");
+        } finally {
+            setSavingRegistration(false);
+        }
     };
 
     const saveLinuxDO = async (values: LinuxDOFormValues) => {
@@ -345,7 +359,31 @@ export default function AccessSettingsPanel() {
                             <p>关闭后，本地注册和未绑定账号的 Linux.do 首次登录都会被拒绝；已有账号及已绑定身份仍可继续登录。</p>
                             <span>{formatSettingTime(registration.updatedAt, "当前来自部署环境默认值")}</span>
                         </div>
-                        <Switch checked={registration.enabled} loading={savingRegistration} disabled={loading || refreshing || savingLinuxDO} onChange={requestRegistrationChange} aria-label="允许创建新账号，切换后立即生效" />
+                        <Switch checked={registration.enabled} loading={savingRegistration} disabled={loading || refreshing || savingLinuxDO || savingAgreement} onChange={requestRegistrationChange} aria-label="允许创建新账号，切换后立即生效" />
+                    </div>
+                    <div className="admin-access-registration-policy mt-4">
+                        <span className="admin-access-policy-icon">
+                            <Mail className="size-5" aria-hidden="true" />
+                        </span>
+                        <div className="admin-access-policy-copy min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <strong>普通用户注册方式</strong>
+                                <AdminStatusBadge label={registration.mode === "email_code" ? "邮箱验证码" : "邮箱免验证码"} tone={registration.mode === "email_code" ? "success" : "warning"} />
+                            </div>
+                            <p>{registration.mode === "email_code" ? "用户必须填写邮箱验证码；正式开放注册时推荐使用。" : "用户仍须填写格式正确且唯一的邮箱，但邮箱不会被标记为已验证。"}</p>
+                        </div>
+                        <Select<RegistrationSetting["mode"]>
+                            id="registration-mode"
+                            ariaLabel="普通用户注册方式"
+                            value={registration.mode}
+                            className="min-w-52"
+                            disabled={loading || refreshing || savingRegistration || savingAgreement}
+                            onChange={(value) => void changeRegistrationMode(value)}
+                            options={[
+                                { value: "email_code", label: "邮箱验证码（推荐）" },
+                                { value: "email_only", label: "仅邮箱（不验证）" },
+                            ]}
+                        />
                     </div>
                 </SettingsSectionCard>
             </div>
@@ -499,18 +537,18 @@ export default function AccessSettingsPanel() {
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
                                 {agreementDirty ? (
-                                    <Button icon={<RotateCcw className="size-4" />} disabled={savingAgreement} onClick={resetAgreementDraft}>
+                                    <Button icon={<RotateCcw className="size-4" />} disabled={savingAgreement || savingRegistration} onClick={resetAgreementDraft}>
                                         撤销
                                     </Button>
                                 ) : null}
-                                <Button type="primary" icon={<Save className="size-4" />} loading={savingAgreement} disabled={!agreementDirty || loading || refreshing} onClick={() => void saveAgreement()}>
+                                <Button type="primary" icon={<Save className="size-4" />} loading={savingAgreement} disabled={!agreementDirty || loading || refreshing || savingRegistration} onClick={() => void saveAgreement()}>
                                     保存服务协议
                                 </Button>
                             </div>
                         </>
                     }
                 >
-                    <Form layout="vertical" requiredMark={false} disabled={loading || refreshing || savingAgreement}>
+                    <Form layout="vertical" requiredMark={false} disabled={loading || refreshing || savingAgreement || savingRegistration}>
                         <Form.Item
                             label="协议名称"
                             extra={`留空时自动跟随品牌名生成，即《${brandName}服务协议》。此处只需填名称本身，书名号由注册页补充。`}

@@ -10,6 +10,7 @@ import { imageGenerationReferenceConnections } from "@/lib/canvas/canvas-resourc
 import { canvasGenerationPromptMetadata } from "@/lib/canvas/canvas-generation-submission";
 import { commitProducedModel } from "@/lib/canvas/produced-model";
 import { CONTENT_MODERATION_ERROR_CODE, generationFailureMetadata, type GenerationFailureMetadata } from "@/lib/generation-error";
+import { generatedAssetTitleBase } from "@/lib/generated-asset-title";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 
@@ -198,6 +199,9 @@ export async function executeImageGeneration({
                         metadata: {
                             sourceNodeId: nodeId,
                             ...taskContext,
+                            assetTitleSourceNodeId: nodeId,
+                            assetTitleSourceNodeTitle: sourceNode?.title || rootNode.title,
+                            assetTitleBase: generatedAssetTitleBase({ kind: "image", sourceTitle: sourceNode?.title || rootNode.title, prompt: effectivePrompt }),
                             resolvedCharacterVersions: generationContext.resolvedCharacterVersions,
                             promptTemplateOperation: sourceNode?.metadata?.promptTemplateOperation,
                             promptTemplateVariables: sourceNode?.metadata?.promptTemplateVariables,

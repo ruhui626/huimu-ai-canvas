@@ -14,6 +14,7 @@ import { cleanupUnusedMedia, collectMediaStorageKeys, resolveMediaUrl } from "@/
 import { flushGenerationAssetStorageLocks, insertOrReturnGenerationAsset, withGenerationArtifactCommitLock, withGenerationAssetStorageLock } from "@/services/generation-asset-repository";
 import { CANVAS_STORE_KEY, commitPendingCanvasStorePersistenceLocked, pendingCanvasStorePersistence, withCanvasStorePersistenceLock } from "@/stores/canvas/use-canvas-store";
 import { readAllCanvasSyncDrafts } from "@/services/canvas-sync-drafts";
+import { normalizeManagedImageAssetLocators } from "@/services/asset-resource-locators";
 
 export type AssetKind = "text" | "image" | "video" | "audio" | "model" | "entity";
 export type { AssetCategory } from "@/lib/asset-category";
@@ -268,13 +269,13 @@ const assetStorage: PersistStorage<AssetStore> = {
 };
 
 async function normalizePersistedAsset(asset: Asset): Promise<Asset> {
-    asset = parseAssetRecord(asset);
+    asset = normalizeManagedImageAssetLocators(parseAssetRecord(asset));
     const storageKey = "data" in asset && asset.data && "storageKey" in asset.data ? asset.data.storageKey : undefined;
     const resourceId = resourceIdFromStorageKey(storageKey);
     if (resourceId) {
         const url = resourceFileUrl(resourceId);
         if (asset.kind === "video" || asset.kind === "audio" || asset.kind === "model") return { ...asset, data: { ...asset.data, url } } as Asset;
-        if (asset.kind === "image") return { ...asset, coverUrl: asset.coverUrl.startsWith("blob:") ? url : asset.coverUrl, data: { ...asset.data, dataUrl: url } };
+        if (asset.kind === "image") return asset;
     }
 
     // 非 resource: key 是早期本地存储格式，必须继续从 localForage 恢复，
@@ -308,7 +309,7 @@ export const useAssetStore = create<AssetStore>()(
             addAsset: (asset) => {
                 const now = new Date().toISOString();
                 const id = nanoid();
-                set((state) => ({ assets: [parseAssetRecord({ ...asset, id, createdAt: now, updatedAt: now }), ...state.assets] }));
+                set((state) => ({ assets: [normalizeManagedImageAssetLocators(parseAssetRecord({ ...asset, id, createdAt: now, updatedAt: now })), ...state.assets] }));
                 return id;
             },
             addGenerationAsset: (effectKey, asset, signal) => {
@@ -326,13 +327,13 @@ export const useAssetStore = create<AssetStore>()(
                             assetId: id,
                             createAsset: () => {
                                 const now = new Date().toISOString();
-                                return parseAssetRecord({
+                                return normalizeManagedImageAssetLocators(parseAssetRecord({
                                     ...asset,
                                     id,
                                     createdAt: now,
                                     updatedAt: now,
                                     metadata: { ...asset.metadata, generationEffectKey: effectKey },
-                                });
+                                }));
                             },
                             updateAssets: (updater) => {
                                 withAssetStorePersistenceSuppressed(() => {
@@ -392,7 +393,7 @@ export const useAssetStore = create<AssetStore>()(
             },
             updateAsset: (id, patch) =>
                 set((state) => ({
-                    assets: state.assets.map((asset) => (asset.id === id ? parseAssetRecord({ ...asset, ...patch, updatedAt: new Date().toISOString() }) : asset)),
+                    assets: state.assets.map((asset) => (asset.id === id ? normalizeManagedImageAssetLocators(parseAssetRecord({ ...asset, ...patch, updatedAt: new Date().toISOString() })) : asset)),
                 })),
             removeAsset: async (id) => get().removeAssets([id]),
             removeAssets: async (ids) => {
@@ -413,7 +414,7 @@ export const useAssetStore = create<AssetStore>()(
                 if (!hasLocalMedia) return;
                 await get().cleanupImages({ assets: remainingAssets });
             },
-            replaceAssets: (assets) => set({ assets: assets.map(parseAssetRecord) }),
+            replaceAssets: (assets) => set({ assets: assets.map((asset) => normalizeManagedImageAssetLocators(parseAssetRecord(asset))) }),
             cleanupImages: async (extra) => {
                 const scope = getActiveUserScope();
                 const frozenExtraImageKeys = collectImageStorageKeys(extra);

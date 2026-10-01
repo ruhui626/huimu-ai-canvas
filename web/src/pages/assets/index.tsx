@@ -11,6 +11,7 @@ import { useNavigate } from "react-router";
 import { CollectionGrid, PageHeader, PaginationBar, WorkspacePage } from "@/components/layout/workspace-page";
 import { WorkspaceState } from "@/components/layout/workspace-state";
 import { AssetMediaPreview } from "@/components/asset-media-preview";
+import { CachedResourceImage } from "@/components/cached-resource-image";
 import { AssetLibraryCard, AssetLibraryCardMedia } from "@/components/assets/asset-library-card";
 import { Switch } from "@/components/ui/base/switch";
 import { cn } from "@/lib/utils";
@@ -99,6 +100,9 @@ export default function AssetsPage() {
     const [pageSize, setPageSize] = useState(40);
     const [gridDensity, setGridDensity] = useState<AssetGridDensity>(readAssetGridDensity);
     const [editingAsset, setEditingAsset] = useState<LibraryAsset | null>(null);
+    const [renamingAsset, setRenamingAsset] = useState<LibraryAsset | null>(null);
+    const [renameValue, setRenameValue] = useState("");
+    const [renameSaving, setRenameSaving] = useState(false);
     const [isAssetOpen, setIsAssetOpen] = useState(false);
     const [previewAsset, setPreviewAsset] = useState<LibraryAsset | null>(null);
     const [deletingAsset, setDeletingAsset] = useState<LibraryAsset | null>(null);
@@ -209,6 +213,17 @@ export default function AssetsPage() {
         ]);
     };
 
+    const updateCachedAssetTitle = (assetId: string, nextTitle: string, updatedAt: string) => {
+        queryClient.setQueriesData<Awaited<ReturnType<typeof loadAssetLibraryPage>>>({ queryKey: ASSET_LIBRARY_QUERY_KEY }, (current) =>
+            current
+                ? {
+                      ...current,
+                      assets: current.assets.map((asset) => (asset.id === assetId ? { ...asset, title: nextTitle, updatedAt } : asset)),
+                  }
+                : current,
+        );
+    };
+
     const saveFolder = async () => {
         const name = folderName.trim();
         if (!name || !folderEditor) return;
@@ -310,6 +325,46 @@ export default function AssetsPage() {
     const ensureAssetsInStore = async (assetIds: string[]) => {
         const missingIds = assetIds.filter((id) => !useAssetStore.getState().assets.some((asset) => asset.id === id));
         if (missingIds.length) await loadAssetsForUse(missingIds);
+    };
+
+    const openRename = (asset: LibraryAsset) => {
+        setRenamingAsset(asset);
+        setRenameValue(asset.title);
+    };
+
+    const saveAssetRename = async () => {
+        if (!renamingAsset || renameSaving) return;
+        const nextTitle = renameValue.trim();
+        if (!nextTitle) {
+            message.warning("素材名称不能为空");
+            return;
+        }
+        setRenameSaving(true);
+        try {
+            await loadAssetsForUse([renamingAsset.id]);
+            const currentAsset = useAssetStore.getState().assets.find((asset) => asset.id === renamingAsset.id);
+            if (!currentAsset) throw new Error("素材详情读取失败，请重试");
+            updateAsset(currentAsset.id, {
+                title: nextTitle,
+                metadata: { ...currentAsset.metadata, titleEditedByUser: true },
+            });
+            await flushAssetStorePersistence();
+            const renamedAsset = useAssetStore.getState().assets.find((asset) => asset.id === currentAsset.id);
+            updateCachedAssetTitle(currentAsset.id, nextTitle, renamedAsset?.updatedAt || currentAsset.updatedAt);
+            setRenamingAsset(null);
+            setRenameValue("");
+            try {
+                await saveRemoteUserDataNow();
+                await invalidateAssetLibrary();
+                message.success("素材名称已更新");
+            } catch (error) {
+                message.warning(localSavedRemotePendingMessage("素材名称已在本地更新", error));
+            }
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "素材重命名失败");
+        } finally {
+            setRenameSaving(false);
+        }
     };
 
     const saveAsset = async () => {
@@ -758,6 +813,7 @@ export default function AssetsPage() {
                                                     retentionDays={retentionDays}
                                                     onSelect={(selected) => setSelectedIds((current) => (selected ? [...new Set([...current, asset.id])] : current.filter((id) => id !== asset.id)))}
                                                     onOpen={() => setPreviewAsset(asset)}
+                                                    onRename={() => openRename(asset)}
                                                     onEdit={() => void openEdit(asset)}
                                                     onCopy={copyAssetText}
                                                     onDownload={downloadImage}
@@ -881,7 +937,15 @@ export default function AssetsPage() {
                         <div className="mt-2 overflow-hidden rounded-md bg-stone-100 dark:bg-stone-900">
                             {coverUrl || imageDraft?.dataUrl ? (
                                 <div className={`asset-preview-uploading ${imageUploading ? "is-uploading" : ""}`}>
-                                    <img src={coverUrl || imageDraft?.dataUrl} alt="" loading="lazy" decoding="async" className="aspect-[4/3] w-full object-cover" />
+                                    <CachedResourceImage
+                                        storageKey={imageDraft?.storageKey}
+                                        src={coverUrl || imageDraft?.dataUrl}
+                                        alt=""
+                                        loading="lazy"
+                                        decoding="async"
+                                        className="aspect-[4/3] w-full object-cover"
+                                        fallback={<div className="grid aspect-[4/3] w-full place-items-center text-foreground/35"><ImageIcon className="size-8" /></div>}
+                                    />
                                     {imageUploading && imageUploadProgress ? (
                                         <div className="asset-preview-uploading-panel">
                                             <div className="asset-preview-uploading-copy">
@@ -937,6 +1001,35 @@ export default function AssetsPage() {
             </Modal>
 
             <AssetDrawer asset={previewAsset} onClose={() => setPreviewAsset(null)} onCopy={copyAssetText} onDownload={downloadImage} />
+
+            <Modal
+                className="library-modal library-confirm-modal"
+                title="重命名素材"
+                open={Boolean(renamingAsset)}
+                confirmLoading={renameSaving}
+                onCancel={() => {
+                    if (!renameSaving) {
+                        setRenamingAsset(null);
+                        setRenameValue("");
+                    }
+                }}
+                onOk={() => void saveAssetRename()}
+                okText="保存"
+                cancelText="取消"
+                okButtonProps={{ disabled: !renameValue.trim() }}
+            >
+                <Input
+                    autoFocus
+                    value={renameValue}
+                    maxLength={80}
+                    placeholder="输入便于识别和检索的素材名称"
+                    onChange={(event) => setRenameValue(event.target.value)}
+                    onPressEnter={() => void saveAssetRename()}
+                />
+                <Typography.Text type="secondary" className="mt-2 block text-xs">
+                    只修改素材库中的显示名称，不会改动画布节点、文件内容或存储地址。
+                </Typography.Text>
+            </Modal>
 
             <AssetBatchUploadModal open={batchUploadOpen} defaultFolderId={folderFilter !== "all" && folderFilter !== "uncategorized" ? folderFilter : ""} folders={folders} onClose={() => setBatchUploadOpen(false)} onComplete={async () => { setBatchUploadOpen(false); await invalidateAssetLibrary(); }} />
 
@@ -1050,6 +1143,7 @@ function AssetCard({
     retentionDays = 30,
     onSelect,
     onOpen,
+    onRename,
     onEdit,
     onCopy,
     onDownload,
@@ -1065,6 +1159,7 @@ function AssetCard({
     retentionDays?: number;
     onSelect: (selected: boolean) => void;
     onOpen: () => void;
+    onRename: () => void;
     onEdit: () => void;
     onCopy: (asset: LibraryAsset) => void;
     onDownload: (asset: LibraryAsset) => void;
@@ -1078,6 +1173,7 @@ function AssetCard({
     const menuItems: MenuProps["items"] = isTrash
         ? [{ key: "restore", icon: <RotateCcw className="size-3.5" />, label: "还原到素材库", onClick: onRestore }, { type: "divider" as const }, { key: "delete", danger: true, icon: <Trash2 className="size-3.5" />, label: "彻底删除", onClick: onDelete }]
         : [
+              { key: "rename", icon: <PencilLine className="size-3.5" />, label: "重命名", onClick: onRename },
               ...(asset.kind === "text" || asset.kind === "image" ? [{ key: "edit", icon: <PencilLine className="size-3.5" />, label: "编辑", onClick: onEdit }] : []),
               ...(asset.kind === "text" ? [{ key: "copy", icon: <Copy className="size-3.5" />, label: "复制文本", onClick: () => void onCopy(asset) }] : []),
               ...(asset.kind === "image" || asset.kind === "video" || asset.kind === "audio" || asset.kind === "model" ? [{ key: "download", icon: <Download className="size-3.5" />, label: "下载", onClick: () => onDownload(asset) }] : []),
@@ -1441,7 +1537,16 @@ function AssetImageZoom({ asset }: { asset: LibraryAsset & { kind: "image" } }) 
     const reset = () => { setScale(1); setOffset({ x: 0, y: 0 }); };
     return (
         <div className="asset-zoom-viewer" onWheel={(event) => { event.preventDefault(); setScale((value) => Math.min(4, Math.max(.25, value * (event.deltaY < 0 ? 1.12 : .89)))); }} onPointerDown={(event) => { if (scale <= 1) return; event.currentTarget.setPointerCapture(event.pointerId); dragRef.current = { x: event.clientX, y: event.clientY, ox: offset.x, oy: offset.y }; }} onPointerMove={(event) => { const drag = dragRef.current; if (!drag) return; setOffset({ x: drag.ox + event.clientX - drag.x, y: drag.oy + event.clientY - drag.y }); }} onPointerUp={() => { dragRef.current = null; }} onPointerCancel={() => { dragRef.current = null; }}>
-            <img src={asset.coverUrl || asset.data.dataUrl} alt={asset.title} loading="lazy" decoding="async" className="asset-archive-preview-media asset-zoom-image" style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }} />
+            <CachedResourceImage
+                storageKey={asset.data.storageKey}
+                src={asset.coverUrl || asset.data.dataUrl}
+                alt={asset.title}
+                loading="lazy"
+                decoding="async"
+                className="asset-archive-preview-media asset-zoom-image"
+                style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }}
+                fallback={<div className="grid min-h-[420px] w-full place-items-center text-white/45"><ImageIcon className="size-10" /></div>}
+            />
             <div className="asset-zoom-controls" data-canvas-no-zoom>
                 <button type="button" title="缩小" aria-label="缩小" onClick={() => setScale((value) => Math.max(.25, value / 1.25))}><ZoomOut className="size-4" /></button>
                 <button type="button" title="恢复适应" aria-label="恢复适应" onClick={reset}>{Math.round(scale * 100)}%</button>

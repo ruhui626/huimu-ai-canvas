@@ -74,24 +74,26 @@ function resolveReferencePreview(reference: CanvasResourceReference, identity: s
     const cached = previewPromiseCache.get(identity);
     if (cached) return cached;
     if (reference.drawingId && projectId) {
-        const pending = loadCanvasDrawingPreview(projectId, reference.drawingId)
+        const request = loadCanvasDrawingPreview(projectId, reference.drawingId)
             .then((preview) => preview ? blobToDataUrl(preview) : reference.previewUrl || "")
-            .catch(() => reference.previewUrl || "")
-            .then((url) => {
-                if (!url) previewPromiseCache.delete(identity);
-                return url;
-            });
+            .catch(() => reference.previewUrl || "");
+        const pending = releasePreviewRequest(identity, request);
         previewPromiseCache.set(identity, pending);
         return pending;
     }
     const storageKey = reference.kind === "video" ? reference.previewStorageKey : reference.storageKey;
-    const pending = resolveImageUrl(storageKey, reference.previewUrl || "", { cacheMiss: true })
-        .catch(() => reference.previewUrl || "")
-        .then((url) => {
-            if (!url) previewPromiseCache.delete(identity);
-            return url;
-        });
+    const request = resolveImageUrl(storageKey, reference.previewUrl || "", { cacheMiss: true })
+        .catch(() => reference.previewUrl || "");
+    const pending = releasePreviewRequest(identity, request);
     previewPromiseCache.set(identity, pending);
+    return pending;
+}
+
+function releasePreviewRequest(identity: string, request: Promise<string>) {
+    let pending!: Promise<string>;
+    pending = request.finally(() => {
+        if (previewPromiseCache.get(identity) === pending) previewPromiseCache.delete(identity);
+    });
     return pending;
 }
 

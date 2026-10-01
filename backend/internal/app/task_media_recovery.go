@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"math/rand/v2"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -41,8 +43,14 @@ type mediaRecoveryError struct {
 }
 type mediaExecutionTaskKey struct{}
 
+var storageCredentialAssignmentPattern = regexp.MustCompile(`(?i)(accesskeyid|accesskeysecret|awsaccesskeyid|credential|signature)([ \t]*[:=][ \t]*["']?)[^ \t\r\n,;"'<>}\]]+`)
+
 func (e *mediaRecoveryError) Error() string {
-	return "作品已生成，但保存未完成：" + mediaStageLabel(e.stage)
+	message := "作品已生成，但保存未完成：" + mediaStageLabel(e.stage)
+	if detail := mediaRecoveryCauseDetail(e.cause); detail != "" {
+		message += "；" + detail
+	}
+	return message
 }
 func (e *mediaRecoveryError) Unwrap() error { return e.cause }
 
@@ -54,7 +62,7 @@ func mediaStageLabel(stage string) string {
 	case "download":
 		return "下载结果失败"
 	case "upload":
-		return "上传 OSS 失败"
+		return "上传对象存储失败"
 	case "local_save":
 		return "保存本地文件失败"
 	case "register":
@@ -62,6 +70,66 @@ func mediaStageLabel(stage string) string {
 	default:
 		return "记录恢复信息失败"
 	}
+}
+
+func mediaRecoveryCauseDetail(err error) string {
+	if err == nil {
+		return ""
+	}
+	var storeErr *mediaStoreError
+	if errors.As(err, &storeErr) {
+		err = storeErr.cause
+	}
+	return redactStorageFailureText(err.Error())
+}
+
+func redactStorageFailureText(value string) string {
+	value = redactDiagnosticText(value, 500)
+	value = storageCredentialAssignmentPattern.ReplaceAllString(value, `${1}${2}[REDACTED]`)
+	value = redactStorageCredentialXML(value)
+	return redactStorageFailureURLs(value)
+}
+
+func redactStorageCredentialXML(value string) string {
+	for _, marker := range []string{"AccessKeyId", "AccessKeySecret", "AWSAccessKeyId", "Credential", "Signature"} {
+		pattern := regexp.MustCompile(`(?i)<` + marker + `>[^<]*</` + marker + `>`)
+		value = pattern.ReplaceAllString(value, "<"+marker+">[REDACTED]</"+marker+">")
+	}
+	return value
+}
+
+func redactStorageFailureURLs(value string) string {
+	searchFrom := 0
+	for searchFrom < len(value) {
+		startHTTP := strings.Index(value[searchFrom:], "http://")
+		startHTTPS := strings.Index(value[searchFrom:], "https://")
+		start := -1
+		if startHTTP >= 0 {
+			start = startHTTP
+		}
+		if startHTTPS >= 0 && (start < 0 || startHTTPS < start) {
+			start = startHTTPS
+		}
+		if start < 0 {
+			break
+		}
+		start += searchFrom
+		end := start
+		for end < len(value) && !isDiagnosticURLDelimiter(value[end]) {
+			end++
+		}
+		parsed, err := url.Parse(value[start:end])
+		if err != nil {
+			searchFrom = end
+			continue
+		}
+		parsed.User = nil
+		parsed.Path, parsed.RawPath, parsed.RawQuery, parsed.Fragment = "/redacted", "", "", ""
+		safe := parsed.String()
+		value = value[:start] + safe + value[end:]
+		searchFrom = start + len(safe)
+	}
+	return value
 }
 
 func (s *Service) decodeMediaCheckpoint(task *model.Task) (*mediaCheckpoint, error) {
@@ -231,10 +299,15 @@ func (s *Service) materializeTaskMedia(ctx context.Context, task *model.Task, co
 			}
 			started := time.Now()
 			resource, err = s.storeTaskMediaFile(task, index, path, item.MIMEType, checkpoint.Mode, resource)
-			s.logMediaStage(*task, stage, started, err)
 			if err != nil {
+				var storeErr *mediaStoreError
+				if errors.As(err, &storeErr) && storeErr.stage != "" {
+					stage = storeErr.stage
+				}
+				s.logMediaStage(*task, stage, started, err)
 				return nil, &mediaRecoveryError{stage: stage, retryable: retryableMediaRecovery(err), cause: err}
 			}
+			s.logMediaStage(*task, stage, started, nil)
 		}
 		item.ResourceID = resource.ID
 		if err := s.saveMediaCheckpoint(task, checkpoint, "register"); err != nil {
@@ -389,6 +462,9 @@ func (s *Service) logMediaStage(task model.Task, stage string, started time.Time
 		status = model.ApiCallStatusFailed
 		code = "media_" + stage + "_failed"
 		message = mediaStageLabel(stage)
+		if detail := mediaRecoveryCauseDetail(err); detail != "" {
+			message += "：" + detail
+		}
 	}
 	if logErr := s.LogAPICall(model.ApiCallLog{UserID: task.UserID, TaskID: task.ID, BillingOrderID: task.BillingOrderID, ProviderRequestID: task.ProviderRequestID, Source: "backend-task", Capability: capabilityFromTaskType(task.Type), Model: task.Model, RequestKind: stage, Method: "INTERNAL", Path: "task/media/" + stage, Status: status, ErrorCode: code, Error: message, DurationMs: time.Since(started).Milliseconds()}); logErr != nil {
 		_ = s.log(task.UserID, task.ID, "error", "记录作品保存阶段失败", logErr.Error())

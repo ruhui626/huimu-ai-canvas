@@ -264,7 +264,7 @@ export default function EmailSettingsPanel() {
                             <>
                                 <div className="admin-email-footer-note">
                                     <BadgeCheck className="size-4" aria-hidden="true" />
-                                    <span>关闭后，普通邮箱注册和密码找回都无法发送验证码。</span>
+                                    <span>关闭后，邮箱验证码注册和密码找回都无法发送验证码；仅邮箱注册不依赖此开关。</span>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
                                     {dirty ? (
@@ -289,7 +289,7 @@ export default function EmailSettingsPanel() {
                                 <strong>发送注册与密码找回验证码</strong>
                                 <AdminStatusBadge label="保存后生效" tone="info" />
                             </div>
-                            <p>启用后，普通邮箱注册和密码找回使用 6 位验证码；邮件发送失败时不会保留可用验证码。</p>
+                            <p>启用后，邮箱验证码注册和密码找回使用 6 位验证码；邮件发送失败时不会保留可用验证码。</p>
                             <span>关闭只停止后续账户邮件，不改变新用户注册开关，也不影响已有登录会话。</span>
                         </div>
                         <Switch checked={draftEnabled} disabled={loading || refreshing || saving} aria-label="发送账户安全邮件" onChange={toggleEnabled} />

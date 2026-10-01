@@ -274,6 +274,33 @@ func TestMediaRecoveryDoesNotFailOverGenerationRoute(t *testing.T) {
 	}
 }
 
+func TestMediaRecoveryErrorKeepsRedactedCauseAndRealStoreStage(t *testing.T) {
+	cause := errors.New(`Put "https://bucket.example.com/users/private/video.mp4?token=secret": SignatureDoesNotMatch AccessKeyId=private-id <Credential>private-credential</Credential>`)
+	wrapped := mediaStoreFailure("upload", cause)
+	var storeErr *mediaStoreError
+	if !errors.As(wrapped, &storeErr) || storeErr.stage != "upload" {
+		t.Fatalf("store stage lost: %#v", storeErr)
+	}
+	message := (&mediaRecoveryError{stage: storeErr.stage, cause: wrapped}).Error()
+	if !strings.Contains(message, "SignatureDoesNotMatch") || !strings.Contains(message, "https://bucket.example.com/redacted") {
+		t.Fatalf("actionable cause lost: %q", message)
+	}
+	for _, secret := range []string{"private-id", "private-credential", "token=secret", "/users/private/video.mp4"} {
+		if strings.Contains(message, secret) {
+			t.Fatalf("sensitive storage detail leaked: %q", message)
+		}
+	}
+}
+
+func TestMediaObjectWriteStageUsesResourceProvider(t *testing.T) {
+	if stage := mediaObjectWriteStage(&model.Resource{Provider: "local"}); stage != "local_save" {
+		t.Fatalf("local resource stage = %q", stage)
+	}
+	if stage := mediaObjectWriteStage(&model.Resource{Provider: "aliyun"}); stage != "upload" {
+		t.Fatalf("object storage resource stage = %q", stage)
+	}
+}
+
 func TestMediaRecoveryTerminalStagesLimitsAndPublicList(t *testing.T) {
 	s, db := newMediaRecoveryTestService(t)
 	for _, tc := range []struct {

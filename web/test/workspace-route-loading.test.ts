@@ -24,6 +24,8 @@ describe("workspace route loading", () => {
         for (const route of ["projects", "canvas", "assets", "create"]) {
             expect(modules).toContain(`${route}: () => import`);
         }
+        expect(modules).toContain('quickVideo: () => import("@/pages/quick-video")');
+        expect(modules).toContain('slug === "tools" && segments[1] === "quick-video"');
         expect(modules).toContain('projectDetail: () => import("@/pages/projects/detail")');
         expect(modules).toContain('slug === "projects" && segments.length > 1');
         expect(navigation).toContain("onPointerEnter={() => preloadWorkspaceRoute(linkTo)}");
@@ -42,6 +44,7 @@ describe("workspace route loading", () => {
         expect(navigation).toContain('{ ...toolItem("create", "/"), id: "home", title: "创作" }');
         expect(navigation).not.toContain('to: "/create"');
         expect(navigation).not.toContain('to: "/home"');
+        expect(navigation).toContain('{ ...toolItem("quick-video", "/tools/quick-video"), title: "常用工具" }');
     });
 
     test("preloads canvas detail and paints opening feedback before navigation", () => {

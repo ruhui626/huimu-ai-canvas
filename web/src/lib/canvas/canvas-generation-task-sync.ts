@@ -5,6 +5,7 @@ import { compositeEmotionImage } from "@/lib/canvas/canvas-emotion";
 import { storeGeneratedAudio } from "@/services/api/audio";
 import { storeGeneratedVideo } from "@/services/api/video";
 import { parseBackendGenerationResult } from "@/services/api/generation-task";
+import { resolveResourceUrl } from "@/services/api/resources";
 import type { GenerationTask, GenerationTaskOutput } from "@/services/api/task-center";
 import { resolveMediaUrl, type UploadedFile } from "@/services/file-storage";
 import { resolveImageUrl, uploadImage, type UploadedImage } from "@/services/image-storage";
@@ -45,7 +46,7 @@ export function generationTaskCanReloadResource(task: GenerationTask) {
 
 export function imageMetadata(image: UploadedImage): CanvasNodeMetadata {
     return {
-        content: image.url,
+        content: resolveResourceUrl(image.storageKey, image.url),
         storageKey: image.storageKey,
         status: "success",
         naturalWidth: image.width,
@@ -142,7 +143,7 @@ export async function buildGenerationTaskNodeResult(node: CanvasNodeData, task: 
         }
         const uploaded =
             image.storageKey && !emotionEdit
-                ? { url: await resolveImageUrl(image.storageKey, image.dataUrl), storageKey: image.storageKey, width: image.width || 1024, height: image.height || 1024, bytes: image.bytes || 0, mimeType: image.mimeType || "image/png" }
+                ? { url: resolveResourceUrl(image.storageKey, image.dataUrl), storageKey: image.storageKey, width: image.width || 1024, height: image.height || 1024, bytes: image.bytes || 0, mimeType: image.mimeType || "image/png" }
                 : await uploadImage(resultDataUrl);
         const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
         const requestedImageSize = nodeSizeFromRatio(node.metadata?.size || "auto", imageConfig.width, imageConfig.height);

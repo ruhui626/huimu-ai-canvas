@@ -9,6 +9,7 @@ export type CanvasTimelineSegmentItem = {
     sourceNodeId?: string;
     sourceStorageKey?: string;
     sourceUrl?: string;
+    sourceDurationMs?: number;
 };
 
 export type TimelineImportResult = { ok: true; segments: CanvasTimelineSegmentItem[] } | { ok: false; error: string };
@@ -46,6 +47,7 @@ export function buildTimelineImportSegments(node: CanvasNodeData, nodes: CanvasN
                 sourceNodeId: matchedNode?.id,
                 sourceStorageKey: clip.directMedia?.storageKey || matchedNode?.metadata?.storageKey,
                 sourceUrl: clip.directMedia?.url || matchedNode?.metadata?.content,
+                sourceDurationMs: sourceDurationMs > 0 ? sourceDurationMs : undefined,
             },
         ];
     });

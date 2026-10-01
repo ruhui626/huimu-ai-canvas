@@ -143,12 +143,12 @@ func (s *Service) EmailEnabled() (bool, error) {
 }
 
 func (s *Service) SendRegistrationEmailCode(rawEmail string) error {
-	p, err := s.verificationPolicy()
+	mode, err := s.RegistrationMode()
 	if err != nil {
 		return err
 	}
-	if !p.allows("register", "email") {
-		return kernel.Forbidden("邮箱单独验证注册未开启")
+	if mode != RegistrationModeEmailCode {
+		return kernel.Forbidden("当前注册方式不需要邮箱验证码")
 	}
 	email := NormalizeEmail(rawEmail)
 	if err := ValidateEmail(email); err != nil {
@@ -222,12 +222,12 @@ func (s *Service) SendRegistrationEmailCode(rawEmail string) error {
 }
 
 func (s *Service) VerifyRegistrationEmailCode(email string, rawCode string) (*model.EmailVerificationCode, error) {
-	p, err := s.verificationPolicy()
+	mode, err := s.RegistrationMode()
 	if err != nil {
 		return nil, err
 	}
-	if !p.allows("register", "email") {
-		return nil, kernel.Forbidden("邮箱单独验证注册未开启")
+	if mode != RegistrationModeEmailCode {
+		return nil, kernel.Forbidden("当前注册方式不需要邮箱验证码")
 	}
 	emailEnabled, err := s.EmailEnabled()
 	if err != nil {
