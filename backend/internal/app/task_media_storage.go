@@ -8,9 +8,12 @@ import (
 	"fmt"
 	"image"
 	"io"
+	"math"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -230,6 +233,7 @@ func (s *Service) storeTaskMediaFile(task *model.Task, index int, path, mimeType
 		return nil, mediaStoreFailure("local_save", errors.New("暂存作品不是普通文件"))
 	}
 	width, height := 0, 0
+	durationMs := int64(0)
 	if kind == "image" {
 		config, _, err := image.DecodeConfig(file)
 		if err != nil {
@@ -248,6 +252,11 @@ func (s *Service) storeTaskMediaFile(task *model.Task, index int, path, mimeType
 		if _, err := file.Seek(0, io.SeekStart); err != nil {
 			return nil, mediaStoreFailure("local_save", err)
 		}
+	} else if kind == "audio" {
+		// Audio duration is the source of truth for per-second settlement. The
+		// media can still be saved when ffprobe is unavailable; settlement then
+		// moves the order to review instead of silently charging a fake length.
+		durationMs = probeMediaDurationMs(path)
 	}
 	day, err := s.reserveGeneratedResourceQuota(task.UserID, info.Size())
 	if err != nil {
@@ -269,7 +278,7 @@ func (s *Service) storeTaskMediaFile(task *model.Task, index int, path, mimeType
 			objectWriteErr = writeErr
 			return etag, writeErr
 		}
-		resource, _, err = s.storeResourceWithWriter(task.UserID, kind, "generated."+extensionFromMimeType(mimeType), mimeType, info.Size(), width, height, 0, file, mediaUploadKey(task.ID, index), false, writeObject)
+		resource, _, err = s.storeResourceWithWriter(task.UserID, kind, "generated."+extensionFromMimeType(mimeType), mimeType, info.Size(), width, height, durationMs, file, mediaUploadKey(task.ID, index), false, writeObject)
 		if err != nil {
 			if objectWriteErr != nil {
 				return nil, mediaStoreFailure(mediaObjectWriteStage(objectWriteResource), err)
@@ -282,6 +291,7 @@ func (s *Service) storeTaskMediaFile(task *model.Task, index int, path, mimeType
 		if resource.UserID != task.UserID || resource.Size != info.Size() || resource.MimeType != mimeType {
 			return nil, mediaStoreFailure("register", errors.New("恢复文件与原始资源不一致"))
 		}
+		resource.DurationMs = durationMs
 		resource.ETag, err = s.storeTaskMediaObject(resource, "generated."+extensionFromMimeType(mimeType), file)
 		if err != nil {
 			return nil, mediaStoreFailure(mediaObjectWriteStage(resource), err)
@@ -307,6 +317,24 @@ func mediaObjectWriteStage(resource *model.Resource) string {
 	return "upload"
 }
 
+func probeMediaDurationMs(path string) int64 {
+	if strings.TrimSpace(path) == "" {
+		return 0
+	}
+	if _, err := exec.LookPath("ffprobe"); err != nil {
+		return 0
+	}
+	output, err := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path).Output()
+	if err != nil {
+		return 0
+	}
+	seconds, err := strconv.ParseFloat(strings.TrimSpace(string(output)), 64)
+	if err != nil || seconds <= 0 || math.IsNaN(seconds) || math.IsInf(seconds, 0) {
+		return 0
+	}
+	return int64(math.Ceil(seconds * 1000))
+}
+
 // Unlike ordinary uploads, generated output preserves an OSS failure for
 // explicit recovery instead of silently changing the storage destination.
 func (s *Service) storeTaskMediaObject(resource *model.Resource, _ string, body io.Reader) (string, error) {
@@ -317,7 +345,7 @@ func (s *Service) storeTaskMediaObject(resource *model.Resource, _ string, body 
 	if err != nil {
 		return "", err
 	}
-	return putOSSObject(setting, resource.ObjectKey, resource.MimeType, resource.Size, body)
+	return putOSSObject(s.storageSettingWithRuntimePolicy(setting), resource.ObjectKey, resource.MimeType, resource.Size, body)
 }
 
 // Cleanup is best effort only after durable completion. Expired leftovers are
