@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"infinite-canvas/backend/internal/model"
+	"yingce/backend/internal/model"
 )
 
 type generatedAssetTitleContext struct {

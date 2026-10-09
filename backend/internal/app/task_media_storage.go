@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"infinite-canvas/backend/internal/model"
+	"yingce/backend/internal/model"
 )
 
 const mediaStagingBudget int64 = 512 << 20
@@ -297,7 +297,7 @@ func (s *Service) storeTaskMediaFile(task *model.Task, index int, path, mimeType
 			return nil, mediaStoreFailure(mediaObjectWriteStage(resource), err)
 		}
 		resource.Status, resource.Error, resource.UpdatedAt = model.ResourceStatusReady, "", time.Now()
-		if err = s.repo.SaveResource(resource); err != nil {
+		if err = s.saveResourceWithinStorageLimit(resource, ""); err != nil {
 			return nil, mediaStoreFailure("register", err)
 		}
 	}

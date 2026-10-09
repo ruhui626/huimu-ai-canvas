@@ -39,6 +39,10 @@ describe("workspace route loading", () => {
 
         expect(router).toContain('{ path: "/", element: <RequireAuth>{deferred(<CreatePage />)}</RequireAuth> }');
         expect(router).toContain('{ path: "/create", element: <RequireAuth>{deferred(<CreatePage />)}</RequireAuth> }');
+        expect(router).toContain('{ path: "/inspirations", element: <RequireAuth>{deferred(<InspirationsPage />)}</RequireAuth> }');
+        expect(router).toContain('{ path: "/tools/quick-video", element: <RequireAuth>{deferred(<QuickVideoPage />)}</RequireAuth> }');
+        expect(router).toContain('{ path: "/assets", element: <RequireAuth>{deferred(<AssetsPage />)}</RequireAuth> }');
+        expect(router).toContain('{ path: "/canvas/:id", element: <RequireAuth><CanvasProjectPage /></RequireAuth> }');
         expect(router).not.toContain('path: "/home"');
         expect(router).not.toContain("HomePage");
         expect(navigation).toContain('{ ...toolItem("create", "/"), id: "home", title: "创作" }');
