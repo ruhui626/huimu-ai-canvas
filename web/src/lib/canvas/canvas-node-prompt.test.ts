@@ -4,6 +4,8 @@ import test from "node:test";
 import "./node-registry/definitions/index.ts";
 // @ts-expect-error -- Node 原生 TypeScript 测试运行器需要保留扩展名。
 import { canvasNodeHasCommittedContent, writeCanvasNodePrompt } from "./canvas-node-prompt.ts";
+// @ts-expect-error -- Node 原生 TypeScript 测试运行器需要保留扩展名。
+import { applyNodeConfigPatch } from "./canvas-project-domain.ts";
 import { canonicalGenerationMetadata } from "./generation-contract";
 // @ts-expect-error -- Node 原生 TypeScript 测试运行器需要保留扩展名。
 import { CanvasNodeType, type CanvasNodeData } from "../../types/canvas.ts";
@@ -112,4 +114,19 @@ test("调用方可先清理失败任务元数据，再由统一写入器保存�
     assert.equal(updated.metadata?.taskId, undefined);
     assert.equal(updated.metadata?.promptTemplateOperation, undefined);
     assert.equal(updated.metadata?.promptTemplateVariables, undefined);
+});
+
+test("视频节点切换模型时保留兼容的生成参数", () => {
+    const current = node(CanvasNodeType.Video, {
+        model: "old-model",
+        size: "16:9",
+        seconds: "6",
+        vquality: "720",
+    });
+
+    const updated = applyNodeConfigPatch(current, { model: "new-model" });
+
+    assert.equal(updated.metadata?.size, "16:9");
+    assert.equal(updated.metadata?.seconds, "6");
+    assert.equal(updated.metadata?.vquality, "720");
 });

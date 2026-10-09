@@ -227,8 +227,8 @@ export function storyboardRowsFromTask(task: GenerationTask) {
 }
 
 
-// 模型切换时必须清理的节点级生成参数：这些参数属于旧模型的能力档位（分辨率/宽高比/质量等），
-// 新模型不支持时若残留，会在 buildNodeConfig 的「节点优先、全局兜底」合并中反复叠加（issue #254）。
+// 图片与音频切换模型时清理旧模型的专属生成参数。
+// 视频参数由目标模型能力统一归一化：兼容值保留，不兼容值回退到目标模型默认值。
 const NODE_MODEL_GENERATION_PARAMS: ReadonlyArray<keyof CanvasNodeMetadata> = [
     "size",
     "quality",
@@ -255,10 +255,12 @@ export function applyNodeConfigPatch(node: CanvasNodeData, patch: Partial<Canvas
     return size && (node.type === CanvasNodeType.Image || node.type === CanvasNodeType.Video) ? { ...next, ...size, position: { x: node.position.x + node.width / 2 - size.width / 2, y: node.position.y + node.height / 2 - size.height / 2 } } : next;
 }
 
-// 切换模型（不同模型标识）时，节点级生成参数必须随旧模型一起失效，回落全局配置；
-// 显式传入的同批 patch（如用户同时调整了参数）仍然优先。
+// 图片与音频切换模型时让旧模型参数失效；显式传入的同批 patch 仍然优先。
 function resetGenerationParamsOnModelSwitch(node: CanvasNodeData, patch: Partial<CanvasNodeMetadata>): Partial<CanvasNodeMetadata> {
     if (typeof patch.model !== "string" || patch.model === node.metadata?.model) {
+        return patch;
+    }
+    if (node.type === CanvasNodeType.Video) {
         return patch;
     }
     const reset: Partial<CanvasNodeMetadata> = {};

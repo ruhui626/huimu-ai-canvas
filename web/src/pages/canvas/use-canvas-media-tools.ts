@@ -640,8 +640,11 @@ export function useCanvasMediaTools({
 
     const splitImageNode = useCallback(async (node: CanvasNodeData, params: CanvasImageSplitParams) => {
         if (!node.metadata?.content || !isValidGridSplit(params)) return;
+        let releaseSource = () => {};
         try {
-            const pieces = await splitDataUrl(node.metadata.content, params);
+            const source = await resolveCroppableImageSource(node);
+            releaseSource = source.release;
+            const pieces = await splitDataUrl(source.url, params);
             const sizedPieces = await Promise.all(pieces.map(async (piece) => {
                 const image = await uploadImage(piece.dataUrl);
                 return { piece, image, size: fitNodeSize(image.width, image.height) };
@@ -668,6 +671,8 @@ export function useCanvasMediaTools({
             message.success(`已切分为 ${childNodes.length} 个子节点`);
         } catch (error) {
             message.error(error instanceof Error ? `切分失败：${error.message}` : "图片切分失败，请重试");
+        } finally {
+            releaseSource();
         }
     }, [message, persistMediaNodes, setConnections, setDialogNodeId, setNodes, setSelectedConnectionId, setSelectedNodeIds]);
 
@@ -1311,7 +1316,7 @@ async function resolveCroppableImageSource(node: CanvasNodeData): Promise<{ url:
     if (!storageKey) return { url: content, release: () => {} };
     const readBlob = storageKey.startsWith("image:") || storageKey.startsWith("generation-image:") ? getImageBlob : getMediaBlob;
     const blob = await readBlob(storageKey).catch(() => null);
-    if (!blob) return { url: content, release: () => {} };
+    if (!blob) throw new Error("图片原始数据读取失败，请刷新后重试");
     const url = URL.createObjectURL(blob);
     return { url, release: () => URL.revokeObjectURL(url) };
 }
