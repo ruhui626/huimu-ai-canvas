@@ -23,7 +23,7 @@ import { normalizeManagedImageAssetList } from "@/services/asset-resource-locato
 import type { Asset } from "@/stores/use-asset-store";
 import { flushAssetStorePersistence, getGenerationAssetDefaults, useAssetStore } from "@/stores/use-asset-store";
 import type { CanvasProject } from "@/stores/canvas/use-canvas-store";
-import { flushCanvasStorePersistence, useCanvasStore } from "@/stores/canvas/use-canvas-store";
+import { clearRemoteCanvasGenerationKeys, confirmRemoteCanvasGenerationKeys, flushCanvasStorePersistence, useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useSyncProgressStore } from "@/stores/use-sync-progress-store";
 import { useCanvasHistoryStore } from "@/stores/canvas/use-canvas-history-store";
 import { repairMissingCanvasAssets, repairMissingCanvasVideoPreviews, collectCanvasMediaAssetIds, rebindInconsistentCanvasAssets, type CanvasAssetRebindResult } from "@/services/canvas-asset-repair";
@@ -146,6 +146,7 @@ export async function loadCanvasProjectForEditing(id: string, options: { latest?
         const project = { ...remote, viewport: live?.viewport || local?.viewport || remote.viewport || { x: 0, y: 0, k: 1 }, remoteContentHash: hash };
         // Align live editor refs synchronously before publishing the new revision.
         // A generation callback must never see old rendered nodes paired with a new revision.
+        confirmRemoteCanvasGenerationKeys(remote, scope);
         options.onLoad?.(project);
         acknowledgedProjects.set(id, project);
         verifiedProjects.add(id);
@@ -216,6 +217,7 @@ export async function refreshCanvasAfterAgent(id: string) {
             if (current) await preserveAgentConflict(current);
             throw error;
         }
+        confirmRemoteCanvasGenerationKeys(project);
         acknowledgedProjects.set(id, { ...project, viewport: projected.viewport, remoteContentHash: hash });
         verifiedProjects.add(id);
         useCanvasStore.setState((state) => ({ projects: [...state.projects.filter((candidate) => candidate.id !== id), projected] }));
@@ -262,6 +264,7 @@ export async function applyAgentCanvasPatches(id: string, patches: AgentCanvasPa
         if (!sameCanvasContent(projected, current)) {
             for (const listener of agentCanvasListeners) listener(projected, current);
         }
+        confirmRemoteCanvasGenerationKeys(remote);
         acknowledgedProjects.set(id, remote);
         verifiedProjects.add(id);
         if (projected === current) return current;
@@ -366,6 +369,7 @@ export async function syncRemoteUserData(userId?: string | null) {
                 }),
             );
             if (useCanvasStore.getState().projects !== localProjects) throw new Error("本地画布仍在更新，已保留本地内容，请重新同步");
+            projects.forEach((project) => confirmRemoteCanvasGenerationKeys(project));
             useCanvasStore.getState().replaceProjects(projects);
             const snapshotAssets = normalizeManagedImageAssetList(parseAssetRecordList(snapshot.assets));
             useAssetStore.getState().replaceAssets(snapshotAssets);
@@ -403,6 +407,7 @@ export function installRemoteUserDataAutoSync() {
 }
 
 export function resetRemoteUserDataSync() {
+    clearRemoteCanvasGenerationKeys();
     sessionEpoch += 1;
     incrementalSession = false;
     verifiedProjects.clear();
@@ -972,6 +977,7 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
                         if (sameCanvasContent(current, remote)) {
                             const remoteHash = await canvasContentHash(remote);
                             const reconciled = { ...remote, viewport: current.viewport, remoteContentHash: remoteHash };
+                            confirmRemoteCanvasGenerationKeys(remote);
                             acknowledgedProjects.set(source.id, reconciled);
                             verifiedProjects.add(source.id);
                             useCanvasStore.setState((state) => ({ projects: state.projects.map((project) => (project.id === source.id ? reconciled : project)) }));
@@ -993,6 +999,7 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
                             throw new ApiError("画布在自动合并期间发生新修改，请重试", { status: 409 });
                         }
                         candidate = { ...rebased, viewport: current.viewport, remoteContentHash: remoteHash };
+                        confirmRemoteCanvasGenerationKeys(remote);
                         acknowledgedProjects.set(source.id, { ...remote, viewport: current.viewport, remoteContentHash: remoteHash });
                         verifiedProjects.add(source.id);
                         useCanvasStore.setState((state) => ({ projects: state.projects.map((project) => (project.id === source.id ? candidate : project)) }));

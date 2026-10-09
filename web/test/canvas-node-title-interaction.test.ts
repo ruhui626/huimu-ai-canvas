@@ -8,6 +8,16 @@ const nodeSource = readFileSync(resolve(import.meta.dir, "../src/components/canv
 const liveViewportSource = readFileSync(resolve(import.meta.dir, "../src/lib/canvas/canvas-live-viewport.ts"), "utf8");
 
 describe("canvas node title interaction", () => {
+    test("outside pointer commits the title through blur before canvas gestures cancel default focus", () => {
+        const header = nodeSource.slice(nodeSource.indexOf("function NodeExternalHeader("));
+        expect(header).toContain("if (!editing) return;");
+        expect(header).toContain("!input.contains(event.target)) input.blur()");
+        expect(header).toContain('window.addEventListener("pointerdown", blurOnOutsidePointer, true)');
+        expect(header).toContain('window.removeEventListener("pointerdown", blurOnOutsidePointer, true)');
+        expect(header).toContain("ref={titleInputRef}");
+        expect(header).toContain("onBlur={onCommit}");
+        expect(header).toContain('if (event.key === "Escape") onCancel()');
+    });
     test("disables iframe hit testing only during node dragging", () => {
         expect(canvasStylesSource).toMatch(/\[data-canvas-node-dragging="true"\] \.node-element iframe\s*\{\s*pointer-events: none;/);
         expect(liveViewportSource).toContain('if (preview) container.dataset.canvasNodeDragging = "true"');

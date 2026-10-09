@@ -1,7 +1,7 @@
 // @ 引用候选菜单：分组列表、预览与定位。
 
-import { type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
-import { type MouseEvent, type PointerEvent, useLayoutEffect, useRef, useState } from "react";
+import { canvasReferenceDisplayName, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
+import { type KeyboardEvent, type MutableRefObject, type MouseEvent, type PointerEvent, useLayoutEffect, useRef, useState } from "react";
 import { type AssetCategory } from "@/stores/use-asset-store";
 import { ASSET_CATEGORY_LABELS } from "@/lib/asset-category";
 import { createPortal } from "react-dom";
@@ -10,6 +10,17 @@ import { CanvasNodeType } from "@/types/canvas";
 import { primeVideoPreviewFrame } from "./canvas-mention-chips";
 import { pointForOffset } from "./canvas-mention-editable";
 import { CachedResourceImage } from "@/components/cached-resource-image";
+
+export const CANVAS_MENTION_CATEGORIES = { image: "图片", video: "视频", audio: "音频", text: "文本", character: "角色" } as const;
+type MentionCategory = AssetCategory | `canvas:${keyof typeof CANVAS_MENTION_CATEGORIES}`;
+export type MentionMenuKeyboardHandler = (event: KeyboardEvent<HTMLElement>) => boolean;
+
+export function canvasMentionCategories(references: CanvasResourceReference[]) {
+    return Object.entries(CANVAS_MENTION_CATEGORIES).map(([kind, label]) => ({
+        value: `canvas:${kind}` as MentionCategory, label,
+        count: references.filter((item) => !item.active && item.kind === kind).length,
+    })).filter((item) => item.count > 0);
+}
 
 export function MentionMenu({
     anchor,
@@ -23,6 +34,7 @@ export function MentionMenu({
     onQueryChange,
     onClose,
     onSelect,
+    keyboardHandlerRef,
 }: {
     anchor: HTMLElement;
     connectedReferences: CanvasResourceReference[];
@@ -35,10 +47,12 @@ export function MentionMenu({
     onQueryChange: (query: string) => void;
     onClose: () => void;
     onSelect: (reference: CanvasResourceReference) => void;
+    keyboardHandlerRef: MutableRefObject<MentionMenuKeyboardHandler | null>;
 }) {
     const menuRef = useRef<HTMLDivElement | null>(null);
     const selectedRef = useRef(false);
-    const [category, setCategory] = useState<AssetCategory | null>(null);
+    const [category, setCategory] = useState<MentionCategory | null>(null);
+    const previousCategory = useRef(category);
     const [position, setPosition] = useState(() => mentionMenuPosition(anchor, cursorOffset, preferredWidth));
 
     useLayoutEffect(() => {
@@ -66,14 +80,59 @@ export function MentionMenu({
     const selectReference = (reference: CanvasResourceReference) => {
         if (selectedRef.current) return;
         selectedRef.current = true;
+        window.setTimeout(() => { selectedRef.current = false; }, 0);
         onSelect(reference);
     };
     const categoryItems = Object.entries(ASSET_CATEGORY_LABELS)
         .map(([value, label]) => ({ value: value as AssetCategory, label, count: assetReferences.filter((item) => item.category === value).length }))
         .filter((item) => item.count > 0);
-    const connectedNodes = connectedReferences.filter((item) => item.kind !== "skill");
+    const connectedNodes = connectedReferences.filter((item) => item.kind !== "skill" && item.active);
+    const unconnectedNodes = connectedReferences.filter((item) => item.kind !== "skill" && !item.active);
     const skillReferences = connectedReferences.filter((item) => item.kind === "skill");
-    const visibleReferences = query ? filteredReferences : category ? assetReferences.filter((item) => item.category === category) : [];
+    const canvasCategories = canvasMentionCategories(unconnectedNodes);
+    const canvasKind = category?.startsWith("canvas:") ? category.slice(7) as keyof typeof CANVAS_MENTION_CATEGORIES : null;
+    const categoryLabel = canvasKind ? CANVAS_MENTION_CATEGORIES[canvasKind] : category ? ASSET_CATEGORY_LABELS[category as AssetCategory] : "";
+    const visibleReferences = query ? filteredReferences : canvasKind ? unconnectedNodes.filter((item) => item.kind === canvasKind) : category ? assetReferences.filter((item) => item.category === category) : [];
+    const handleMenuKeyDown: MentionMenuKeyboardHandler = (event) => {
+        if (event.nativeEvent.isComposing) return false;
+        if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            onClose();
+            anchor.focus();
+            return true;
+        }
+        const buttons = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>(".canvas-resource-mention-scroll button") || []);
+        const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            event.stopPropagation();
+            const next = event.key === "ArrowDown" ? (index + 1) % buttons.length : (index < 0 ? buttons.length - 1 : (index - 1 + buttons.length) % buttons.length);
+            buttons[next]?.focus();
+            return true;
+        }
+        if (event.key === "Enter" && index < 0) {
+            event.preventDefault();
+            event.stopPropagation();
+            buttons[0]?.click();
+            return true;
+        }
+        if (event.key === "Tab" && event.target === anchor) {
+            event.preventDefault();
+            buttons[0]?.focus();
+            return true;
+        }
+        return false;
+    };
+    useLayoutEffect(() => {
+        keyboardHandlerRef.current = handleMenuKeyDown;
+        return () => { keyboardHandlerRef.current = null; };
+    });
+    useLayoutEffect(() => {
+        if (previousCategory.current === category) return;
+        previousCategory.current = category;
+        menuRef.current?.querySelector<HTMLElement>(category ? ".canvas-resource-mention-back" : "input")?.focus();
+    }, [category]);
 
     useLayoutEffect(() => {
         const closeOnOutsidePointer = (event: globalThis.PointerEvent) => {
@@ -95,6 +154,7 @@ export function MentionMenu({
             onPointerDown={stopCanvasInteraction}
             onMouseDown={stopCanvasInteraction}
             onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => { handleMenuKeyDown(event); event.stopPropagation(); }}
         >
             <div className="canvas-resource-mention-search">
                 <Search aria-hidden />
@@ -104,18 +164,6 @@ export function MentionMenu({
                     aria-label="搜索引用素材"
                     onChange={(event) => onQueryChange(event.target.value)}
                     onPointerDown={(event) => event.stopPropagation()}
-                    onKeyDown={(event) => {
-                        if (event.key === "Escape") {
-                            event.preventDefault();
-                            onClose();
-                            anchor.focus();
-                            return;
-                        }
-                        if (event.key === "Enter" && filteredReferences.length) {
-                            event.preventDefault();
-                            selectReference(filteredReferences[0]);
-                        }
-                    }}
                 />
             </div>
             <div className="canvas-resource-mention-scroll thin-scrollbar">
@@ -125,7 +173,7 @@ export function MentionMenu({
                     <>
                         <button type="button" className="canvas-resource-mention-back" onClick={() => setCategory(null)}>
                             <ArrowLeft aria-hidden />
-                            <span>{ASSET_CATEGORY_LABELS[category]}</span>
+                            <span>{categoryLabel}</span>
                             <small>{visibleReferences.length}</small>
                         </button>
                         <MentionReferenceList references={visibleReferences} activeReferenceId={activeReferenceId} onSelect={selectReference} />
@@ -135,12 +183,20 @@ export function MentionMenu({
                         {connectedNodes.length ? (
                             <section className="canvas-resource-mention-section">
                                 <h4>
-                                    <span>画布节点</span>
+                                    <span>已添加参考</span>
                                     <small>{connectedNodes.length}</small>
                                 </h4>
                                 <MentionReferenceList references={connectedNodes} activeReferenceId={activeReferenceId} onSelect={selectReference} />
                             </section>
                         ) : null}
+                        <section className="canvas-resource-mention-section">
+                            <h4><span>当前画布</span><small>{unconnectedNodes.length}</small></h4>
+                            {canvasCategories.length ? canvasCategories.map((item) => (
+                                <button key={item.value} type="button" className="canvas-resource-mention-folder" onClick={() => setCategory(item.value)}>
+                                    <Folder aria-hidden /><span>{item.label}</span><small>{item.count}</small><ChevronRight aria-hidden />
+                                </button>
+                            )) : <p className="px-3 text-xs opacity-60">暂无其他可引用节点</p>}
+                        </section>
                         {skillReferences.length ? (
                             <section className="canvas-resource-mention-section">
                                 <h4>
@@ -197,15 +253,16 @@ export function MentionReferenceList({ references, activeReferenceId, onSelect }
             onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                onSelect(reference);
+                if (event.detail === 0) onSelect(reference);
             }}
         >
             <ReferencePreview reference={reference} />
             <span className="canvas-resource-mention-copy">
                 <span className="canvas-resource-mention-title-row">
-                    <strong title={reference.label}>{reference.label}</strong>
+                    <strong title={canvasReferenceDisplayName(reference)}>{canvasReferenceDisplayName(reference)}</strong>
                     {reference.kind === "skill" ? <em>技能</em> : null}
                 </span>
+                {reference.kind !== "skill" ? <span className="canvas-resource-mention-meta">{reference.assetId ? "素材库" : `${reference.label} · ${reference.active ? "已连接" : "选择后连接"}`}</span> : null}
                 {reference.kind === "skill" ? (
                     <span className="canvas-resource-mention-meta">
                         <span>{reference.skill?.description || reference.text || "工作流技能"}</span>

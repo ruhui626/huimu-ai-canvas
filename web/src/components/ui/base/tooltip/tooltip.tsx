@@ -1,4 +1,5 @@
 import { Fragment, isValidElement, type ComponentProps, type ReactNode } from "react";
+import { InputNumber } from "antd";
 import { Focusable, Tooltip as RACTooltip, TooltipTrigger, type Placement } from "react-aria-components";
 
 import { cn } from "@/lib/utils";
@@ -42,7 +43,7 @@ export function Tooltip({ title, placement = "top", delay = 350, className, chil
 
     const child = isValidElement<{ disabled?: boolean; loading?: boolean; tabIndex?: number }>(children) ? children : null;
     const directTrigger =
-        child && child.type !== Fragment && !child.props.disabled && !child.props.loading && (typeof child.type !== "string" || ["button", "a", "input", "select", "textarea", "summary"].includes(child.type) || child.props.tabIndex !== undefined);
+        child && child.type !== Fragment && child.type !== InputNumber && !child.props.disabled && !child.props.loading && (typeof child.type !== "string" || ["button", "a", "input", "select", "textarea", "summary"].includes(child.type) || child.props.tabIndex !== undefined);
 
     return (
         <TooltipTrigger delay={delay}>
@@ -52,7 +53,8 @@ export function Tooltip({ title, placement = "top", delay = 350, className, chil
              * 普通 span 的写法因此既没有触发事件、也没有定位基准，鼠标悬停永远不弹。
              * useFocus 只处理 target === currentTarget，不能依赖内层按钮焦点冒泡到 span。
              * 直接把事件和 aria-describedby 交给启用的控件，不增加额外 Tab 停靠点。
-             * 自定义控件需透传 DOM props/ref；禁用或非交互内容仍由外壳接收悬停。
+             * 自定义控件需透传 DOM props/ref；InputNumber 暴露命令式对象而非 Element，
+             * 与禁用或非交互内容一样交给真实 span 定位，避免 ResizeObserver 接收到对象。
              */}
             <span className="inline-flex">
                 {directTrigger ? (

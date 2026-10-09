@@ -77,7 +77,7 @@ import { storyboardMinNodeHeight } from "@/lib/canvas/canvas-storyboard-layout";
 import { CanvasPrevisNodePanel } from "@/components/canvas/previs/canvas-previs-node-panel";
 import { CanvasVersionCompareModal } from "@/components/canvas/canvas-version-compare-modal";
 import { useFocusMode } from "@/hooks/use-focus-mode";
-import { connectCanvasTextMention } from "@/lib/canvas/canvas-text-mention";
+import { connectCanvasNodeMention } from "@/lib/canvas/canvas-text-mention";
 import { writeCanvasNodePrompt } from "@/lib/canvas/canvas-node-prompt";
 import {
     applyCanvasConnectionPromptSync,
@@ -2162,20 +2162,20 @@ function CanvasViewportPage() {
                     isRunning={isCanvasNodeGenerating(panelNode, runningNodeId)}
                     mentionReferences={[
                         ...(mentionReferencesByNodeId.get(panelNode.id) || EMPTY_RESOURCE_REFERENCES),
-                        ...buildCanvasResourceReferences(nodesRef.current, connectionsRef.current).filter((reference) => reference.kind === "text" && reference.nodeId !== panelNode.id && !(mentionReferencesByNodeId.get(panelNode.id) || []).some((active) => active.nodeId === reference.nodeId)),
+                        ...buildCanvasResourceReferences(nodesRef.current, connectionsRef.current).filter((reference) => reference.nodeId !== panelNode.id && !(mentionReferencesByNodeId.get(panelNode.id) || []).some((active) => active.nodeId === reference.nodeId)),
                     ]}
                     onAddReference={(nodeId, reference) => {
                         if (reference.active || reference.assetId || reference.kind === "skill") return reference;
-                        if (reference.kind !== "text" || !reference.nodeId || reference.nodeId === nodeId) return undefined;
+                        if (!reference.nodeId || reference.nodeId === nodeId) return undefined;
                         try {
-                            const linked = connectCanvasTextMention(nodesRef.current, connectionsRef.current, nodeId, reference.nodeId, nanoid());
+                            const linked = connectCanvasNodeMention(nodesRef.current, connectionsRef.current, nodeId, reference.nodeId, nanoid(), effectiveConfig);
                             nodesRef.current = linked.nodes;
                             connectionsRef.current = linked.connections;
                             setNodes(linked.nodes);
                             setConnections(linked.connections);
                             return linked.reference;
                         } catch (cause) {
-                            message.warning(cause instanceof Error ? cause.message : "文本引用失败");
+                            message.warning(cause instanceof Error ? cause.message : "节点引用失败");
                             return undefined;
                         }
                     }}

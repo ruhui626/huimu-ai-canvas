@@ -75,7 +75,7 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
                                 onClick={() => onConfigChange("size", value)}
                             >
                                 <SizePreview width={ratioPreview(value).width} height={ratioPreview(value).height} color={theme.node.text} />
-                                <span>{value}</span>
+                                <span>{videoSizeLabel(value)}</span>
                             </button>
                         ))}
                     </div>
@@ -97,7 +97,7 @@ function JiMengVideoSettingsPanel({ config, profile, priceTiers, onConfigChange,
                 {showTitle ? <div className="text-sm font-semibold">视频设置</div> : null}
                 <SettingGroup title="比例" color={theme.node.muted}>
                     <div className="grid grid-cols-3 gap-1.5">
-                {profile.ratios.map((value) => <OptionPill key={value} selected={config.size === value} theme={theme} onClick={() => onConfigChange("size", value)}>{value}</OptionPill>)}
+                {profile.ratios.map((value) => <OptionPill key={value} selected={config.size === value} theme={theme} onClick={() => onConfigChange("size", value)}>{videoSizeLabel(value)}</OptionPill>)}
                     </div>
                 </SettingGroup>
                 <SettingGroup title="秒数" color={theme.node.muted}>
@@ -139,7 +139,7 @@ function SeedanceVideoSettingsPanel({ config, profile, priceTiers, onConfigChang
                 <SettingGroup title="比例" color={theme.node.muted}>
                     <div className="grid grid-cols-4 gap-1.5">
                         {profile.ratios.map((value) => {
-                            const item = { value, label: value };
+                            const item = { value, label: videoSizeLabel(value) };
                             return (
                             <button
                                 key={item.value}

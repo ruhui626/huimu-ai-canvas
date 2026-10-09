@@ -76,6 +76,19 @@ type CanvasGenerationPersistenceAttempt = {
     chatSessions?: CanvasAssistantSession[];
 };
 const pendingCanvasGenerationAttempts = new Map<string, Map<string, CanvasGenerationPersistenceAttempt>>();
+const confirmedRemoteGenerationKeys = new Map<string, { nodes: Map<string, string[]>; sessions: Map<string, string[]> }>();
+
+// 只接受经过服务端版本校验的快照；本地正在生成的标记不能借此绕过专用提交。
+export function confirmRemoteCanvasGenerationKeys(project: CanvasProject, scope = getActiveUserScope()) {
+    confirmedRemoteGenerationKeys.set(`${scope}\0${project.id}`, {
+        nodes: new Map(project.nodes.filter((node) => node.metadata?.generationEffectKeys?.length).map((node) => [node.id, [...node.metadata!.generationEffectKeys!]])),
+        sessions: new Map((project.chatSessions || []).filter((session) => session.generationEffectKeys?.length).map((session) => [session.id, [...session.generationEffectKeys!]])),
+    });
+}
+
+export function clearRemoteCanvasGenerationKeys() {
+    confirmedRemoteGenerationKeys.clear();
+}
 
 type AsyncCanvasStorageLock = {
     request<T>(name: string, callback: () => Promise<T>): Promise<T>;
@@ -272,14 +285,16 @@ function ordinaryCanvasProjectSnapshot(scope: string, project: CanvasProject, du
     if (!hasGenerationEffectKeys(project) && !hasGenerationEffectKeys(durableProject)) return project;
     const durableNodes = new Map((durableProject?.nodes || []).map((node) => [node.id, node]));
     const durableSessions = new Map((durableProject?.chatSessions || []).map((session) => [session.id, session]));
+    const remoteKeys = confirmedRemoteGenerationKeys.get(`${scope}\0${project.id}`);
     let changed = false;
     let hasUnconfirmedGeneration = false;
     const nodes: CanvasNodeData[] = [];
     for (const node of project.nodes) {
         const durableNode = durableNodes.get(node.id);
         const durableKeys = durableNode?.metadata?.generationEffectKeys;
+        const confirmedKeys = [...new Set([...(durableKeys || []), ...(remoteKeys?.nodes.get(node.id) || [])])];
         const localKeys = node.metadata?.generationEffectKeys;
-        if (durableProject && hasUnconfirmedGenerationKey(localKeys, durableKeys)) {
+        if (durableProject && hasUnconfirmedGenerationKey(localKeys, confirmedKeys)) {
             hasUnconfirmedGeneration = true;
             changed = true;
             if (durableNode) {
@@ -298,13 +313,13 @@ function ordinaryCanvasProjectSnapshot(scope: string, project: CanvasProject, du
             }
             continue;
         }
-        if (sameGenerationEffectKeys(localKeys, durableKeys)) {
+        if (sameGenerationEffectKeys(localKeys, confirmedKeys)) {
             nodes.push(node);
             continue;
         }
         changed = true;
         const metadata = { ...(node.metadata || {}) };
-        if (durableKeys?.length) metadata.generationEffectKeys = [...durableKeys];
+        if (confirmedKeys.length) metadata.generationEffectKeys = confirmedKeys;
         else delete metadata.generationEffectKeys;
         nodes.push({ ...node, metadata });
     }
@@ -312,7 +327,8 @@ function ordinaryCanvasProjectSnapshot(scope: string, project: CanvasProject, du
     for (const session of project.chatSessions) {
         const durableSession = durableSessions.get(session.id);
         const durableKeys = durableSession?.generationEffectKeys;
-        if (durableProject && hasUnconfirmedGenerationKey(session.generationEffectKeys, durableKeys)) {
+        const confirmedKeys = [...new Set([...(durableKeys || []), ...(remoteKeys?.sessions.get(session.id) || [])])];
+        if (durableProject && hasUnconfirmedGenerationKey(session.generationEffectKeys, confirmedKeys)) {
             hasUnconfirmedGeneration = true;
             changed = true;
             if (durableSession) {
@@ -328,13 +344,13 @@ function ordinaryCanvasProjectSnapshot(scope: string, project: CanvasProject, du
             }
             continue;
         }
-        if (sameGenerationEffectKeys(session.generationEffectKeys, durableKeys)) {
+        if (sameGenerationEffectKeys(session.generationEffectKeys, confirmedKeys)) {
             chatSessions.push(session);
             continue;
         }
         changed = true;
         const nextSession = { ...session };
-        if (durableKeys?.length) nextSession.generationEffectKeys = [...durableKeys];
+        if (confirmedKeys.length) nextSession.generationEffectKeys = confirmedKeys;
         else delete nextSession.generationEffectKeys;
         chatSessions.push(nextSession);
     }

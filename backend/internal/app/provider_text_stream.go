@@ -72,6 +72,22 @@ func extractTextPayload(payload map[string]interface{}, protocol string) string 
 }
 
 func validateTextPayload(payload map[string]interface{}) error {
+	for _, value := range interfaceSlice(payload["choices"]) {
+		choice, _ := value.(map[string]interface{})
+		if stringField(choice, "finish_reason") == "length" {
+			return errors.New("模型输出达到 Token 上限，内容不完整；请提高模型的最大输出 Token 或减少单次生成内容")
+		}
+	}
+	delta, _ := payload["delta"].(map[string]interface{})
+	details, _ := payload["incomplete_details"].(map[string]interface{})
+	if stringField(payload, "stop_reason") == "max_tokens" || stringField(delta, "stop_reason") == "max_tokens" || stringField(details, "reason") == "max_output_tokens" {
+		return errors.New("模型输出达到 Token 上限，内容不完整；请提高模型的最大输出 Token 或减少单次生成内容")
+	}
+	if response, ok := payload["response"].(map[string]interface{}); ok {
+		if err := validateTextPayload(response); err != nil {
+			return err
+		}
+	}
 	if code, ok := payload["code"].(float64); ok && code != 0 {
 		rawMessage := defaultString(stringField(payload, "msg"), "请求失败")
 		return providerPayloadError{raw: rawMessage, message: providerPayloadErrorMessage(rawMessage)}

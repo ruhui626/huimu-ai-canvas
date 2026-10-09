@@ -11,6 +11,11 @@ function storyboardTask(resultJson: string): GenerationTask {
 // 后端 canvas_text 任务统一落 {mode, reasoning, text} 包装，模型输出正文嵌在 text 里；
 // 分镜解析必须穿透包装取内层 {title, rows}，同时兼容模板路径直接落顶层的结构。
 describe("storyboardRowsFromTask", () => {
+    test("截断的镜头 JSON 不伪装为缺行，也不恢复部分镜头", () => {
+        for (const text of ['{"rows":[{"plotDescription":"开场"},{"plotDescription":"中', '{"rows":[{"plotDescription":"中']) {
+            expect(() => storyboardRowsFromTask(storyboardTask(JSON.stringify({ text })))).toThrow("JSON 不完整或格式无效");
+        }
+    });
     test("从 {mode, reasoning, text} 包装的 text 内层解析分镜行", () => {
         const payload = { title: "桃源三结义", rows: [
             { shotNumber: 1, durationSeconds: 8, plotDescription: "朝堂开篇", dialogue: "", characters: ["刘备"], mustHave: ["列队"], optionalDetails: [] },

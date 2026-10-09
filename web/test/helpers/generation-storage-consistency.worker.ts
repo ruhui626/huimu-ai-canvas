@@ -4,7 +4,7 @@ import { getActiveUserScope, setActiveUserScope } from "../../src/lib/user-scope
 
 type InstanceHook = (storeName: string, key: string, value: unknown) => Promise<void> | void;
 
-type Scenario = "image-cleanup" | "scope-cleanup-switch" | "scope-cleanup-late-canvas-reference" | "video-commit-race" | "audio-commit-race" | "canvas-batch-commit-race" | "canvas-multi-output" | "canvas-copy-generation";
+type Scenario = "image-cleanup" | "scope-cleanup-switch" | "scope-cleanup-late-canvas-reference" | "video-commit-race" | "audio-commit-race" | "canvas-batch-commit-race" | "canvas-multi-output" | "canvas-copy-generation" | "canvas-remote-generation";
 
 function installStorageHarness() {
     const originalCreateInstance = localforage.createInstance.bind(localforage);
@@ -573,10 +573,53 @@ async function runCanvasCopyGeneration() {
     }
 }
 
+async function runRemoteGenerationRestore() {
+    const harness = installStorageHarness();
+    const previousScope = getActiveUserScope();
+    try {
+        setActiveUserScope("remote-generation");
+        const { useCanvasStore, flushCanvasStorePersistence, confirmRemoteCanvasGenerationKeys } = await import("../../src/stores/canvas/use-canvas-store");
+        const { CanvasNodeType } = await import("../../src/types/canvas");
+        await useCanvasStore.persist.rehydrate();
+        const id = useCanvasStore.getState().createProject("remote restore");
+        const image = { id: "image", type: CanvasNodeType.Image, title: "image", position: { x: 0, y: 0 }, width: 200, height: 200 };
+        useCanvasStore.getState().updateProject(id, { nodes: [image] });
+        await flushCanvasStorePersistence();
+        const base = useCanvasStore.getState().openProject(id)!;
+        const remote = { ...base, revision: 2, nodes: [image, ...[CanvasNodeType.Video, CanvasNodeType.Audio, CanvasNodeType.Text].map((type) => ({ ...image, id: type, type, metadata: { content: type, generationEffectKeys: [`remote:${type}`] } }))], connections: [{ id: "edge", fromNodeId: "image", toNodeId: "video" }] };
+        confirmRemoteCanvasGenerationKeys(remote);
+        useCanvasStore.setState({ projects: [remote] });
+        await flushCanvasStorePersistence();
+        await useCanvasStore.persist.rehydrate();
+        const restoredProject = useCanvasStore.getState().openProject(id)!;
+        const restored = restoredProject.nodes.map((node) => node.id);
+        useCanvasStore.getState().updateProject(id, { nodes: [...restoredProject.nodes,
+            { ...image, id: "pending", metadata: { generationEffectKeys: ["unconfirmed"] } },
+            { ...image, id: "copied-stamp", metadata: { generationEffectKeys: ["remote:video"] } },
+        ] });
+        await flushCanvasStorePersistence();
+        await useCanvasStore.persist.rehydrate();
+        const protectedIds = useCanvasStore.getState().openProject(id)!.nodes.map((node) => node.id);
+        setActiveUserScope("other-account");
+        await useCanvasStore.persist.rehydrate();
+        useCanvasStore.setState({ projects: [base] });
+        await flushCanvasStorePersistence();
+        useCanvasStore.setState({ projects: [remote] });
+        await flushCanvasStorePersistence();
+        await useCanvasStore.persist.rehydrate();
+        return { restored, protectedIds, isolated: useCanvasStore.getState().openProject(id)!.nodes.map((node) => node.id), connections: restoredProject.connections.length };
+    } finally {
+        setActiveUserScope(previousScope);
+        harness.restore();
+    }
+}
+
 self.onmessage = async (event: MessageEvent<Scenario>) => {
     try {
         const result =
-            event.data === "image-cleanup"
+            event.data === "canvas-remote-generation"
+                ? await runRemoteGenerationRestore()
+                : event.data === "image-cleanup"
                 ? await runImageCleanup()
                 : event.data === "scope-cleanup-switch"
                   ? await runScopeCleanupAfterSwitch()

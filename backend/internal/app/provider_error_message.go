@@ -7,6 +7,7 @@ import (
 )
 
 var providerErrorURL = regexp.MustCompile(`(?i)https?://[^\s<>"'，。；）]+`)
+var providerErrorRequestIDSuffix = regexp.MustCompile(`(?i)\s+Request[ \t]+id:[ \t]*[a-z0-9][a-z0-9_-]{0,127}\s*$`)
 var providerErrorSensitive = regexp.MustCompile(`(?i)余额|额度|配额|欠费|账单|充值|计费|密钥|密码|令牌|balance|quota|billing|credit|payment|funds|wallet|api[ _-]?key|authorization|bearer|cookie|(?:access|refresh|auth|session)[ _-]?token|token\s*[=:]|secret|password|credential|sk-[a-z0-9]|tenant|trace[ _-]?id|request[ _-]?id|internal stack|stack\s*trace|dial tcp|no such host|prompt\s*[=:]`)
 
 // 只提取错误消息字段，不序列化整个响应，避免回传 headers、请求正文和诊断信息。
@@ -18,6 +19,8 @@ func providerErrorDetail(raw string) string {
 	} else if strings.HasPrefix(raw, "{") || strings.HasPrefix(raw, "[") {
 		return ""
 	}
+	// 只移除规范的末尾请求编号，避免其导致安全的参数原因被整条隐藏；剩余内容仍须脱敏。
+	raw = strings.TrimSpace(providerErrorRequestIDSuffix.ReplaceAllString(raw, ""))
 	// 网关 HTML、敏感账务/凭据诊断整条隐藏；普通消息里的 URL 单独移除。
 	if strings.HasPrefix(raw, "{") || strings.HasPrefix(raw, "[") || strings.ContainsAny(raw, "<>") || providerErrorSensitive.MatchString(raw) {
 		return ""

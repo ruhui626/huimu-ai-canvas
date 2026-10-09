@@ -8,7 +8,7 @@ import { buildAssetMentionReferences, canvasResourceMentionToken, findCanvasReso
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useResolvedCanvasResourceReferences } from "./use-resolved-canvas-resource-references";
 import { InlineReferencePreview, referencePreviewUrl, syncInlineMentionPreviews } from "./canvas-mention-chips";
-import { MentionMenu, clamp, mentionCaretRect } from "./canvas-mention-menu";
+import { MentionMenu, clamp, mentionCaretRect, type MentionMenuKeyboardHandler } from "./canvas-mention-menu";
 import { getEditableSelection, renderEditableContent, serializeEditableValue, setEditableSelection } from "./canvas-mention-editable";
 
 export { TOOL_ICON_MAP } from "./canvas-mention-chips";
@@ -46,6 +46,7 @@ type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange" | "val
     mentionMenuWidth?: number;
     sendOnEnter?: boolean | "both";
     onContentSizeChange?: (height: number) => void;
+    editorMaxHeight?: CSSProperties["maxHeight"];
     includeAssetLibrary?: boolean;
     activeDropReferenceId?: string | null;
     onReferenceFilesDrop?: (reference: CanvasResourceReference, files: File[]) => void;
@@ -62,7 +63,7 @@ function shouldSubmitOnEnter(event: { key: string; ctrlKey: boolean; metaKey: bo
 }
 
 export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Props>(function CanvasResourceMentionTextarea(
-    { value, references, onSelectReference, onChange, onSubmit, onKeyDown, className, containerClassName, style, highlightLabels = true, mentionMenuWidth = 320, sendOnEnter = true, onContentSizeChange, includeAssetLibrary = false, activeDropReferenceId, onReferenceFilesDrop, autoLinkEnabled = false, ...props },
+    { value, references, onSelectReference, onChange, onSubmit, onKeyDown, className, containerClassName, style, highlightLabels = true, mentionMenuWidth = 320, sendOnEnter = true, onContentSizeChange, editorMaxHeight, includeAssetLibrary = false, activeDropReferenceId, onReferenceFilesDrop, autoLinkEnabled = false, ...props },
     forwardedRef,
 ) {
     const rawTheme = useActiveTheme();
@@ -76,7 +77,7 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
     const pendingScrollTopRef = useRef<number | null>(null);
     const lastRenderedValueRef = useRef("");
     const [mention, setMention] = useState<MentionState | null>(null);
-    const [activeIndex, setActiveIndex] = useState(-1);
+    const menuKeyboardHandlerRef = useRef<MentionMenuKeyboardHandler | null>(null);
     const [autoLinkCursor, setAutoLinkCursor] = useState<number | null>(null);
     const autoLinkSuggestionRef = useRef<HTMLButtonElement | null>(null);
     const [autoLinkPosition, setAutoLinkPosition] = useState<{ left: number; top: number } | null>(null);
@@ -225,7 +226,6 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
 
     const closeMention = () => {
         setMention(null);
-        setActiveIndex(-1);
     };
 
     const syncMention = (nextValue: string, cursor: number) => {
@@ -240,7 +240,6 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
         const isSameMention = mention?.start === nextMention.start && mention.end === nextMention.end && mention.query === nextMention.query;
         if (!isSameMention) {
             setMention(nextMention);
-            setActiveIndex(-1);
         }
     };
 
@@ -332,12 +331,12 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
     const menu = mention && availableReferences.length && menuAnchor ? (
         <MentionMenu
             anchor={menuAnchor}
-            connectedReferences={activeMentionCanvasReferences}
+            connectedReferences={onSelectReference ? mentionCanvasReferences : activeMentionCanvasReferences}
             assetReferences={assetReferences}
             filteredReferences={candidates}
             query={mention.query}
             cursorOffset={mention.end}
-            activeReferenceId={activeIndex >= 0 ? candidates[Math.min(activeIndex, candidates.length - 1)]?.id : undefined}
+            keyboardHandlerRef={menuKeyboardHandlerRef}
             preferredWidth={mentionMenuWidth}
             onQueryChange={(query) => setMention((current) => current ? { ...current, query } : current)}
             onClose={closeMention}
@@ -369,7 +368,7 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
                         color: style?.color || theme.node.text,
                         height: "100%",
                         minHeight: 0,
-                        maxHeight: "100%",
+                        maxHeight: editorMaxHeight ?? "100%",
                         overflowY: "auto",
                         overflowX: "hidden",
                     }}
@@ -423,28 +422,7 @@ if (event.key === "Enter" && (event.nativeEvent.isComposing || composingRef.curr
                             insertAutoLink(autoLinkMatch);
                             return;
                         }
-                        if (mention && candidates.length) {
-                            if (event.key === "ArrowDown") {
-                                event.preventDefault();
-                                setActiveIndex((index) => index < 0 ? 0 : (index + 1) % candidates.length);
-                                return;
-                            }
-                            if (event.key === "ArrowUp") {
-                                event.preventDefault();
-                                setActiveIndex((index) => index < 0 ? candidates.length - 1 : (index - 1 + candidates.length) % candidates.length);
-                                return;
-                            }
-                            if (event.key === "Enter" || event.key === "Tab") {
-                                event.preventDefault();
-                                insertReference(candidates[activeIndex < 0 ? 0 : Math.min(activeIndex, candidates.length - 1)]);
-                                return;
-                            }
-                            if (event.key === "Escape") {
-                                event.preventDefault();
-                                closeMention();
-                                return;
-                            }
-                        }
+                        if (mention && menuKeyboardHandlerRef.current?.(event)) return;
                         if (event.key === "Enter") {
                             event.preventDefault();
                             const shouldSubmit = shouldSubmitOnEnter(event, sendOnEnter);
@@ -511,7 +489,7 @@ if (event.key === "Enter" && (event.nativeEvent.isComposing || composingRef.curr
                 }}
                 value={value}
                 className={`${className || ""} relative z-10`}
-                style={{ ...mergedStyle, height: "100%", minHeight: 0, maxHeight: "100%", overflowY: "auto", overflowX: "hidden" }}
+                style={{ ...mergedStyle, height: "100%", minHeight: 0, maxHeight: editorMaxHeight ?? "100%", overflowY: "auto", overflowX: "hidden" }}
                 onChange={(event) => {
                     const next = event.target.value;
                     onChange(next);
@@ -539,28 +517,7 @@ if (event.key === "Enter" && (event.nativeEvent.isComposing || composingRef.curr
                             insertAutoLink(autoLinkMatch);
                             return;
                         }
-                    if (mention && candidates.length) {
-                        if (event.key === "ArrowDown") {
-                            event.preventDefault();
-                            setActiveIndex((index) => index < 0 ? 0 : (index + 1) % candidates.length);
-                            return;
-                        }
-                        if (event.key === "ArrowUp") {
-                            event.preventDefault();
-                            setActiveIndex((index) => index < 0 ? candidates.length - 1 : (index - 1 + candidates.length) % candidates.length);
-                            return;
-                        }
-                        if (event.key === "Enter") {
-                            event.preventDefault();
-                            insertReference(candidates[activeIndex < 0 ? 0 : Math.min(activeIndex, candidates.length - 1)]);
-                            return;
-                        }
-                        if (event.key === "Escape") {
-                            event.preventDefault();
-                            closeMention();
-                            return;
-                        }
-                    }
+                    if (mention && menuKeyboardHandlerRef.current?.(event)) return;
                     const shouldSubmit = shouldSubmitOnEnter(event, sendOnEnter);
                     if (shouldSubmit && onSubmit) {
                         event.preventDefault();

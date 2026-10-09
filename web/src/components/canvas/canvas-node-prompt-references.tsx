@@ -2,7 +2,7 @@
 
 import { Image as AntImage, Popover } from "antd";
 import { AtSign, FileText, GripVertical, ImageIcon, Link2, Maximize2, Music2, Pencil, SlidersHorizontal, UserRound, Video, X } from "lucide-react";
-import { type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
+import { canvasReferenceDisplayName, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { useState } from "react";
 import { CanvasNodeType } from "@/types/canvas";
 import { CachedResourceImage } from "@/components/cached-resource-image";
@@ -128,6 +128,7 @@ export function ConnectedReferenceShelf({
             <div className="canvas-node-composer-references" role="group" aria-label="已连接素材">
                 <div className="canvas-node-composer-references-track thin-scrollbar">
                     {activeReferences.map((reference, index) => {
+                        const displayName = canvasReferenceDisplayName(reference);
                         const canPreview = Boolean(reference.previewUrl) && (reference.kind === "image" || reference.kind === "character" || reference.kind === "video");
                         const isDropTarget = dropTargetReferenceId === reference.id;
                         return (
@@ -227,8 +228,8 @@ export function ConnectedReferenceShelf({
                                     type="button"
                                     className="canvas-node-reference-preview"
                                     style={{ background: theme.toolbar.itemHover, color: theme.node.text, outlineColor: theme.node.activeStroke }}
-                                    title={canPreview ? `预览 ${reference.title}` : `插入 @${reference.label}`}
-                                    aria-label={canPreview ? `预览 ${reference.title}` : `插入 @${reference.label}`}
+                                    title={`${displayName} · ${reference.label}（${canPreview ? "点击预览" : "点击插入引用"}）`}
+                                    aria-label={canPreview ? `预览 ${displayName}` : `插入 @${displayName}`}
                                     onClick={() => (canPreview ? setImagePreview(reference) : onInsert(reference))}
                                 >
                                     <ReferenceThumbnail reference={reference} />
@@ -238,9 +239,8 @@ export function ConnectedReferenceShelf({
                                         </span>
                                     ) : null}
                                 </button>
-                                <button type="button" className="canvas-node-reference-label" title={`插入 @${reference.label}`} onClick={() => onInsert(reference)}>
-                                    <span className="opacity-55">@</span>
-                                    <span className="truncate">{reference.label}</span>
+                                <button type="button" className="canvas-node-reference-label" title={`插入 @${displayName} · ${reference.label}`} aria-label={`插入 @${displayName} · ${reference.label}`} onClick={() => onInsert(reference)}>
+                                    <AtSign className="size-3.5 opacity-55" aria-hidden="true" />
                                 </button>
                                 {onRemove ? (
                                     <button
@@ -248,7 +248,7 @@ export function ConnectedReferenceShelf({
                                         className="canvas-node-reference-remove"
                                         style={{ background: theme.toolbar.panel, borderColor: theme.node.stroke, color: theme.node.text }}
                                         title="移除参考并删除连接"
-                                        aria-label={`移除参考 ${reference.label}`}
+                                        aria-label={`移除参考 ${displayName} · ${reference.label}`}
                                         onClick={(event) => {
                                             event.stopPropagation();
                                             onRemove(reference);

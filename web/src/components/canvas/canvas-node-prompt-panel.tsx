@@ -1,4 +1,4 @@
-import { Button, InputNumber, Modal } from "antd";
+import { Button, Modal } from "antd";
 import { Tooltip } from "@/components/ui/base/tooltip";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { ArrowUp, ChevronDown, FileText, ImagePlus, LayoutList, LoaderCircle, Maximize2, Music2, SlidersHorizontal, Video, WandSparkles, X } from "lucide-react";
@@ -445,7 +445,11 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                         fullWidth
                         config={config}
                         value={config.model}
-                        onChange={(model) => onConfigChange(node.id, mode === "image" ? { model, ...defaultImageParamsForModel(config, model) } : { model })}
+                        onChange={(model) => {
+                            if (mode !== "image") return onConfigChange(node.id, { model });
+                            const { count, ...params } = defaultImageParamsForModel(config, model);
+                            onConfigChange(node.id, { model, ...params, count: Number(count) });
+                        }}
                         capability={mode}
                         requirements={resolvedRequirements}
                         onMissingConfig={() => navigateToSettings({ continueCreation: true })}
@@ -476,23 +480,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                                     列表
                                 </button>
                             </div>
-                            {!node.metadata?.listMode ? (
-                                <Tooltip title={`文本生成份数（默认 1，可在生成配置中调整）`}>
-                                    <InputNumber
-                                        size="small"
-                                        min={1}
-                                        max={15}
-                                        value={Math.max(1, Math.min(15, Math.floor(Math.abs(Number(node.metadata?.textCount) || 1))))}
-                                        onChange={(value) =>
-                                            onConfigChange(node.id, {
-                                                textCount: Math.max(1, Math.min(15, Math.floor(Math.abs(Number(value) || 1)))),
-                                            })
-                                        }
-                                        aria-label="文本生成份数"
-                                        className="!w-14 !h-7 [&_.ant-input-number-input]:!text-[var(--fs-tiny)]"
-                                    />
-                                </Tooltip>
-                            ) : <span className="text-[10px]" style={{ color: theme.node.muted }}>行数和列结构由模型判断</span>}
+                            {node.metadata?.listMode ? <span className="text-[10px]" style={{ color: theme.node.muted }}>行数和列结构由模型判断</span> : null}
                         </>
                     ) : mode === "image" ? (
                         // 图片模式下，显示相机配置与镜头配置

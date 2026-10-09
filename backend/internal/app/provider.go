@@ -405,6 +405,13 @@ func (s *Service) resolveProviderConfig(config providerConfig) (providerConfig, 
 	config.ChannelModelKey = modelKey
 	config.ProviderModelKey = providerModelKey
 	config.Model = firstNonEmpty(providerModelKey, channelModel.ProviderModelKey, modelKey)
+	if normalizeCapability(channelModel.Capability) == "text" {
+		// 系统模型以服务端保存的能力为准，不能依赖客户端快照或遗漏的字段。
+		config.CapabilityConfig, err = normalizedChannelModelCapability(channelModel)
+		if err != nil {
+			return providerConfig{}, err
+		}
+	}
 	return config, nil
 }
 

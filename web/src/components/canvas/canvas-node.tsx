@@ -580,6 +580,17 @@ function NodeExternalHeader({ node, scale, dimensionLabel, active, editable, edi
     onCommit: () => void;
     onCancel: () => void;
 }) {
+    const titleInputRef = useRef<HTMLInputElement>(null);
+    useEffect(() => {
+        if (!editing) return;
+        const blurOnOutsidePointer = (event: PointerEvent) => {
+            const input = titleInputRef.current;
+            if (input && event.target instanceof Node && !input.contains(event.target)) input.blur();
+        };
+        // 画布手势会 preventDefault，需在捕获阶段主动失焦，复用 onBlur 的保存逻辑。
+        window.addEventListener("pointerdown", blurOnOutsidePointer, true);
+        return () => window.removeEventListener("pointerdown", blurOnOutsidePointer, true);
+    }, [editing]);
     // 标题保持屏幕尺寸只适用于近景；远景继续反向缩放会遮住节点和连线。
     if (scale < NODE_EXTERNAL_HEADER_MIN_SCALE && !editing) return null;
     const inverseScale = 1 / Math.max(scale, 0.05);
@@ -607,6 +618,7 @@ function NodeExternalHeader({ node, scale, dimensionLabel, active, editable, edi
                 <Icon className="size-3 shrink-0" strokeWidth={1.8} />
                 {editing ? (
                     <input
+                        ref={titleInputRef}
                         autoFocus
                         value={draft}
                         className="h-6 min-w-20 max-w-[190px] flex-1 truncate rounded bg-transparent px-1.5 text-xs font-medium outline-none"

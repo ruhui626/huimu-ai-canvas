@@ -12,6 +12,7 @@ import { VIDEO_RESOLUTION_CAPABILITY_OPTIONS } from "@/lib/video-generation-opti
 import { Select } from "@/components/ui/base/select";
 
 const ratioOptions = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
+const videoRatioOptions = [...ratioOptions.map((value) => ({ label: value, value })), { label: "自适应", value: "adaptive" }];
 const operationOptions = [
     { label: "文生视频", value: "text_to_video" },
     { label: "图生视频", value: "image_to_video" },
@@ -163,12 +164,12 @@ export function ModelCapabilityEditor({ value, onChange, protocol, capability = 
                                     className="w-full"
                                     disabled={disabled}
                                     value={profile.ratios}
-                                    options={ratioOptions.map((item) => ({ label: item, value: item }))}
+                                    options={videoRatioOptions}
                                     onChange={(ratios) => update({ ratios, defaultRatio: ratios.includes(profile.defaultRatio) ? profile.defaultRatio : ratios[0] || "16:9" })}
                                 />
                             </Field>
                             <Field label="默认比例">
-                                <Select className="w-full" disabled={disabled} value={profile.defaultRatio} options={profile.ratios.map((item) => ({ label: item, value: item }))} onChange={(defaultRatio) => update({ defaultRatio })} />
+                                <Select className="w-full" disabled={disabled} value={profile.defaultRatio} options={profile.ratios.map((item) => ({ label: item === "adaptive" ? "自适应" : item, value: item }))} onChange={(defaultRatio) => update({ defaultRatio })} />
                             </Field>
                             <Field label="输出分辨率">
                                 <Select
@@ -269,18 +270,18 @@ export function ModelCapabilityEditor({ value, onChange, protocol, capability = 
                 </CapabilityBlock>
                 <CapabilityBlock title="画面规格">
                     {autoDL ? autoDLSpecFields : <div className="grid gap-3 sm:grid-cols-2">
-                        <Field label="画面比例">
+                            <Field label="画面比例">
                             <Select
                                 mode="multiple"
                                 className="w-full"
                                 disabled={disabled}
                                 value={profile.ratios}
-                                options={ratioOptions.map((item) => ({ label: item, value: item }))}
+                                options={videoRatioOptions}
                                 onChange={(ratios) => update({ ratios, defaultRatio: ratios.includes(profile.defaultRatio) ? profile.defaultRatio : ratios[0] || "16:9" })}
                             />
                         </Field>
                         <Field label="默认比例">
-                            <Select className="w-full" disabled={disabled} value={profile.defaultRatio} options={profile.ratios.map((item) => ({ label: item, value: item }))} onChange={(defaultRatio) => update({ defaultRatio })} />
+                            <Select className="w-full" disabled={disabled} value={profile.defaultRatio} options={profile.ratios.map((item) => ({ label: item === "adaptive" ? "自适应" : item, value: item }))} onChange={(defaultRatio) => update({ defaultRatio })} />
                         </Field>
                         <Field label="输出分辨率">
                             <Select

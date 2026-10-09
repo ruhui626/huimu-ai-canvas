@@ -4,7 +4,7 @@
 
 import { Brush, Camera, Clapperboard, Clock, Contrast, FastForward, Globe2, Grid2x2, Grid3x3, Package, Palette, PersonStanding, Rewind, ScanFace, SlidersHorizontal, Sparkles, Sun } from "lucide-react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
+import { canvasReferenceDisplayName, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { createPortal } from "react-dom";
 import { CanvasNodeType } from "@/types/canvas";
 import { refreshResourceAccess, resolveResourceAccessURL, resourceIdFromStorageKey } from "@/services/api/resources";
@@ -42,7 +42,7 @@ export function createInlineMentionChip(reference: CanvasResourceReference, toke
     chip.dataset.mentionReferenceId = reference.id;
     const isDecorated = reference.kind === "skill" || reference.kind === "tool";
     chip.className = `canvas-resource-inline-mention ${isDecorated ? `is-${reference.kind}` : ""}`;
-    chip.title = "双击放大预览";
+    chip.title = `${canvasReferenceDisplayName(reference)} · ${reference.label}（双击放大预览）`;
     if (reference.kind === "skill") chip.style.setProperty("--canvas-skill-mention-color", skillMentionColor(reference));
     if (reference.kind === "tool") chip.style.setProperty("--canvas-skill-mention-color", skillMentionColor(reference));
 
@@ -62,7 +62,7 @@ export function createInlineMentionChip(reference: CanvasResourceReference, toke
 
     const label = document.createElement("span");
     label.className = "canvas-resource-inline-label";
-    label.textContent = reference.label;
+    label.textContent = canvasReferenceDisplayName(reference);
     chip.appendChild(label);
 
     return chip;
@@ -183,7 +183,9 @@ export function syncInlineMentionPreviews(editor: HTMLElement, references: Canva
             preview.replaceWith(createInlinePreview(reference));
         }
         const label = chip.querySelector(".canvas-resource-inline-label");
-        if (label && label.textContent !== reference.label) label.textContent = reference.label;
+        const displayName = canvasReferenceDisplayName(reference);
+        if (label && label.textContent !== displayName) label.textContent = displayName;
+        chip.title = `${displayName} · ${reference.label}（双击放大预览）`;
     });
 }
 

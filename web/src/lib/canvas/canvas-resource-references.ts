@@ -44,6 +44,11 @@ export function canvasSkillMentionToken(skillId: string) {
     return `@[skill:${skillId}]`;
 }
 
+/** 显示名称与请求中的引用编号分离，改名不改写引用令牌。 */
+export function canvasReferenceDisplayName(reference: Pick<CanvasResourceReference, "title" | "label">) {
+    return reference.title.trim() || reference.label;
+}
+
 export function canvasToolMentionToken(toolId: number, label: string, type: string, icon: string) {
     return `@[tool:${type}:${toolId}:${encodeURIComponent(label)}:${icon}]`;
 }

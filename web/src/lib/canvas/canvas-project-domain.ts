@@ -146,22 +146,18 @@ function parseStoryboardRowsPayload(raw: string): { title?: string; rows?: Array
         const inner = parsed.text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
         const start = inner.indexOf("{");
         const end = inner.lastIndexOf("}");
-        if (start >= 0 && end > start) {
+        if (start >= 0) {
             try {
-                const innerParsed = JSON.parse(inner.slice(start, end + 1)) as { title?: string; rows?: Array<Partial<StoryboardRow>> };
+                const innerParsed = JSON.parse(inner.slice(start, end > start ? end + 1 : undefined)) as { title?: string; rows?: Array<Partial<StoryboardRow>> };
                 if (Array.isArray(innerParsed.rows)) return innerParsed;
             } catch {
-                // 内层不是合法 JSON 时落到外层结构，由调用方的缺行校验统一报错。
+                throw new Error("分镜返回的 JSON 不完整或格式无效；请检查模型输出上限，或减少单次章节内容后重试");
             }
         }
     }
     if (parsed.text && typeof parsed.text === "object") {
-        try {
-            const nested = parseStoryboardRowsPayload(JSON.stringify(parsed.text));
-            if (Array.isArray(nested.rows)) return nested;
-        } catch {
-            // 对象形式的 text 不是分镜载荷时，交由统一缺行校验报错。
-        }
+        const nested = parseStoryboardRowsPayload(JSON.stringify(parsed.text));
+        if (Array.isArray(nested.rows)) return nested;
     }
     return parsed;
 }

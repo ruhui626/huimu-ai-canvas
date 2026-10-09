@@ -4,9 +4,11 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"yingce/backend/internal/model"
@@ -35,13 +37,30 @@ func executeProtocolCreateRequest(ctx context.Context, input canvasGenerationInp
 	if wire == string(model.ChannelInterfaceOpenAIResponse) {
 		wire = "responses"
 	}
-	if input.Mode != "text" || !input.StreamText || (wire != "chat-completion" && wire != "responses" && wire != "claude-api") {
+	if input.Mode != "text" || (wire != "chat-completion" && wire != "responses" && wire != "claude-api") {
 		data, err := executeProtocolRequest(ctx, input.Config, spec)
 		return data, nil, err
 	}
 	body := protocolBodyObject(spec.Body)
 	if body == nil {
-		return nil, nil, errors.New("声明式流式文本请求体必须是 JSON 对象")
+		return nil, nil, errors.New("声明式文本请求体必须是 JSON 对象")
+	}
+	applyTextThinking(body, input, wire)
+	limitField := "max_tokens"
+	if wire == "responses" {
+		limitField = "max_output_tokens"
+	} else if wire == "chat-completion" && body["max_completion_tokens"] != nil {
+		limitField = "max_completion_tokens"
+		delete(body, "max_tokens")
+	}
+	applyTextOutputLimit(body, input.MaxOutputTokens, limitField)
+	spec.Body = body
+	if !input.StreamText {
+		data, err := executeProtocolRequest(ctx, input.Config, spec)
+		if err == nil {
+			err = validateTextResponseJSON(data)
+		}
+		return data, nil, err
 	}
 	body["stream"] = true
 	if wire == "chat-completion" {
@@ -54,6 +73,9 @@ func executeProtocolCreateRequest(ctx context.Context, input canvasGenerationInp
 	parser.emitReasoning = input.OnReasoningDelta
 	data, mimeType, err := executeProtocolBinaryRequestWithConsumer(ctx, input.Config, spec, parser.consume)
 	if err != nil || !strings.Contains(strings.ToLower(mimeType), "event-stream") {
+		if err == nil {
+			err = validateTextResponseJSON(data)
+		}
 		return data, nil, err
 	}
 	parser.flush()
@@ -66,6 +88,14 @@ func executeProtocolCreateRequest(ctx context.Context, input canvasGenerationInp
 		return nil, nil, errors.New("流式文本接口没有返回内容")
 	}
 	return data, &protocol.Result{Text: text, Reasoning: stringField(parsed, "reasoning")}, nil
+}
+
+func validateTextResponseJSON(data []byte) error {
+	var payload map[string]interface{}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return fmt.Errorf("文本接口返回格式无效：%w", err)
+	}
+	return validateTextPayload(payload)
 }
 
 func runLegacyTextTask(ctx context.Context, input canvasGenerationInput) (map[string]interface{}, error) {
@@ -155,7 +185,37 @@ func runClaudeTextTask(ctx context.Context, input canvasGenerationInput) (map[st
 	return providerTextTaskResult(result), nil
 }
 
+func supportsExplicitTextThinking(config providerConfig) bool {
+	modelID := strings.ToLower(strings.TrimSpace(config.Model))
+	if strings.HasPrefix(modelID, "deepseek-v4-") {
+		return true
+	}
+	// Only confirmed Ark model versions use this mapping; display names and
+	// third-party gateways do not establish upstream parameter support.
+	endpoint, err := url.Parse(config.BaseURL)
+	if err != nil || !strings.EqualFold(endpoint.Hostname(), "ark.cn-beijing.volces.com") {
+		return false
+	}
+	switch modelID {
+	case "doubao-seed-2-1-pro-260628", "doubao-seed-2-1-pro-260915", "doubao-seed-character-260628":
+		return true
+	default:
+		return false
+	}
+}
+
 func applyTextThinking(body map[string]interface{}, input canvasGenerationInput, protocol string) {
+	// These models default to thinking when the switch is omitted. Forward the
+	// resolved step setting explicitly, without deciding Agent policy here.
+	if protocol == "chat-completion" && supportsExplicitTextThinking(input.Config) {
+		state := "disabled"
+		if input.TextOptions.Thinking {
+			state = "enabled"
+		}
+		body["thinking"] = map[string]interface{}{"type": state}
+		delete(body, "reasoning_effort")
+		return
+	}
 	if !input.TextOptions.Thinking {
 		return
 	}

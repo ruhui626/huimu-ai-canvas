@@ -4,7 +4,7 @@ import { canvasConnectionError } from "../src/lib/canvas/canvas-connection-polic
 import { assertCanvasImageReferenceLimit, buildGenerationConfig, canvasImageReferenceLimitError, resolveCanvasGenerationModel } from "../src/lib/canvas/canvas-project-generation";
 import { readNodeGenerationSpec, synchronizeGenerationSpec } from "../src/lib/canvas/generation-contract";
 import { defaultModelCapabilityConfig } from "../src/lib/model-capabilities";
-import { audioModelForConnectionInput, groupModelsByDisplayName, inferVideoOperation, modelCompatibilityError, modelGroupReferenceLimits, modelPromptLengthError, resolveCompatibleModel, resolveModelGenerationDefaults, resolveModelVideoBooleanOptions } from "../src/lib/model-selection";
+import { audioModelForConnectionInput, defaultImageParamsForModel, groupModelsByDisplayName, inferVideoOperation, modelCompatibilityError, modelGroupReferenceLimits, modelPromptLengthError, resolveCompatibleModel, resolveModelGenerationDefaults, resolveModelVideoBooleanOptions } from "../src/lib/model-selection";
 import { defaultConfig, normalizeModelOptionValue, type AiConfig, type ModelChannel } from "../src/stores/use-config-store";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "../src/types/canvas";
 
@@ -204,6 +204,29 @@ describe("逻辑模型选择", () => {
         };
 
         expect(resolveModelGenerationDefaults(config, model, "image", {}, { size: "1:1" }).size).toBe("16:9");
+    });
+
+    test("切换图片模型时保留兼容参数并归一化不兼容参数", () => {
+        const model = "platform::target-image";
+        const profile = defaultModelCapabilityConfig(undefined, "target-image");
+        profile.image!.size = { parameter: "aspect_ratio", values: ["1:1", "16:9"], default: "1:1", allowCustom: false };
+        profile.image!.quality = { supported: true, values: ["1k", "2k"], default: "1k" };
+        profile.image!.transparentBackground = { supported: true, default: false };
+        profile.image!.maxOutputs = 2;
+        const config: AiConfig = {
+            ...defaultConfig,
+            size: "16:9",
+            quality: "2k",
+            transparentBackground: "true",
+            count: "4",
+            channels: [{ id: "platform", name: "平台模型", baseUrl: "/api", apiKey: "system", apiFormat: "openai", scope: "system", models: ["target-image"], modelCosts: [{ model: "target-image", capability: "image", billingMode: "fixed_request", unitPriceMicrocredits: 1, capabilityConfig: profile }] }],
+            models: [model],
+            imageModels: [model],
+            imageModel: model,
+            model,
+        };
+
+        expect(defaultImageParamsForModel(config, model)).toEqual({ size: "16:9", quality: "2k", transparentBackground: "true", count: "2" });
     });
 
     test("后台视频默认时长优先于旧的全局 6 秒配置", () => {

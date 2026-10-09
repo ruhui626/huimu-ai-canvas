@@ -98,6 +98,17 @@ describe("canvas resource mention editor", () => {
         expect(component).toContain('window.addEventListener("scroll", updatePosition, true)');
     });
 
+    test("allows creation prompts to cap both plain and rich editors before scrolling", () => {
+        const editor = moduleGroupSource("components/canvas/canvas-resource-mention-textarea.tsx");
+        const creation = source("../src/pages/create/creation-workspace.tsx");
+
+        expect(editor).toContain('editorMaxHeight?: CSSProperties["maxHeight"]');
+        expect(editor.match(/maxHeight: editorMaxHeight \?\? "100%"/g)?.length).toBe(2);
+        expect(creation).toContain('editorMaxHeight={props.variant === "empty" ? 220 : 160}');
+        expect(creation).toContain('overscrollBehavior: "contain"');
+        expect(creation).toContain("creation-scrollbar");
+    });
+
     test("renders skill references as descriptive workflow rows", () => {
         const component = moduleGroupSource("components/canvas/canvas-resource-mention-textarea.tsx");
         const css = source("../src/styles/globals.css");
