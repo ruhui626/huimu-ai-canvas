@@ -155,3 +155,46 @@ func TestDoubaoSeedAudioCreateSendsReferenceAudioAndImage(t *testing.T) {
 		t.Fatalf("image reference = %#v", imageReference)
 	}
 }
+
+func TestDoubaoAdvancedAudioParameters(t *testing.T) {
+	manifest, err := os.ReadFile("../../../plugin-packages/doubao-streaming-tts/manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, err := LoadManifest(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := GenerationRequest{
+		Capability: CapabilityAudio, Model: "seed-audio-1.0", Prompt: "你好",
+		Extra:           map[string]any{"audioSpeed": "1.25", "audioFormat": "mp3"},
+		ProviderOptions: map[string]map[string]any{"doubao-streaming-tts": {"sample_rate": 24000, "pitch_rate": -3, "loudness_rate": 50}},
+	}
+	spec, err := adapter.BuildCreate(context.Background(), RequestContext{Request: request})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := spec.Body.(map[string]any)
+	settings := body["audio_config"].(map[string]any)
+	encoded, _ := json.Marshal(settings)
+	var got map[string]any
+	_ = json.Unmarshal(encoded, &got)
+	if got["sample_rate"] != float64(24000) || got["pitch_rate"] != float64(-3) || got["loudness_rate"] != float64(50) || got["speech_rate"] != float64(25) {
+		t.Fatalf("settings = %s", encoded)
+	}
+	request.Prompt = strings.Repeat("中", 3001)
+	if _, err = adapter.BuildCreate(context.Background(), RequestContext{Request: request}); err == nil {
+		t.Fatal("accepted oversized prompt")
+	}
+	request.Prompt = "你好"
+	request.Extra["audioSpeed"] = "4"
+	if _, err = adapter.BuildCreate(context.Background(), RequestContext{Request: request}); err == nil {
+		t.Fatal("accepted unsupported speed")
+	}
+	request.Extra["audioSpeed"] = "1"
+	request.Images = []MediaReference{{Kind: "image", URL: "https://example.com/a.png"}}
+	request.Audios = []MediaReference{{Kind: "audio", URL: "https://example.com/a.mp3"}}
+	if _, err = adapter.BuildCreate(context.Background(), RequestContext{Request: request}); err == nil {
+		t.Fatal("accepted mixed image and audio")
+	}
+}

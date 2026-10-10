@@ -43,6 +43,9 @@ type Options struct {
 	AudioVoice            *string `json:"audioVoice,omitempty" node:"audioVoice" task:"audioVoice" modes:"audio"`
 	AudioFormat           *string `json:"audioFormat,omitempty" node:"audioFormat" task:"audioFormat" modes:"audio"`
 	AudioSpeed            *string `json:"audioSpeed,omitempty" node:"audioSpeed" task:"audioSpeed" modes:"audio"`
+	AudioSampleRate       *string `json:"audioSampleRate,omitempty" node:"audioSampleRate" task:"audioSampleRate" modes:"audio"`
+	AudioPitch            *string `json:"audioPitch,omitempty" node:"audioPitch" task:"audioPitch" modes:"audio"`
+	AudioVolume           *string `json:"audioVolume,omitempty" node:"audioVolume" task:"audioVolume" modes:"audio"`
 	AudioLanguage         *string `json:"audioLanguage,omitempty" node:"audioLanguage" task:"audioLanguage" modes:"audio"`
 	AudioDialect          *string `json:"audioDialect,omitempty" node:"audioDialect" task:"audioDialect" modes:"audio"`
 	AudioInstructions     *string `json:"audioInstructions,omitempty" node:"audioInstructions" task:"audioInstructions" modes:"audio"`
@@ -182,7 +185,7 @@ func OptionsFromTaskConfig(mode string, config map[string]any) (Options, error) 
 			continue
 		}
 		raw, exists := config[field.Tag.Get("task")]
-		if !exists || raw == nil || raw == "" {
+		if !exists || raw == nil || (raw == "" && field.Tag.Get("task") != "audioVoice" && field.Tag.Get("task") != "audioSampleRate") {
 			continue
 		}
 		parsed := reflect.New(field.Type.Elem())

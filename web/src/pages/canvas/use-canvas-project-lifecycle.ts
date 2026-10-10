@@ -102,6 +102,7 @@ export function useCanvasProjectLifecycle({
     useEffect(() => {
         if (!hydrated || !sessionHydrated) return;
         let cancelled = false;
+        const controller = new AbortController();
         // Keep load intent on the refs until this attempt finishes. React Strict
         // Mode remounts the effect; consuming the flags here would turn "load
         // latest" into a normal open and immediately recreate the conflict.
@@ -160,7 +161,7 @@ export function useCanvasProjectLifecycle({
                 // 本地已有该画布的持久化缓存：先以本地数据秒开渲染，彻底消除白屏与等待
                 applyRestoredProject(cachedProject);
             }
-            const loadedProject = await loadCanvasProjectForEditing(projectId, { latest, historyRestore: historyRestore || undefined, onLoad: applyRestoredProject });
+            const loadedProject = await loadCanvasProjectForEditing(projectId, { latest, historyRestore: historyRestore || undefined, onLoad: applyRestoredProject, signal: controller.signal });
             if (cancelled) return;
             if (historyRestoreRef.current === historyRestore) {
                 historyRestoreRef.current = null;
@@ -212,6 +213,7 @@ export function useCanvasProjectLifecycle({
             });
         return () => {
             cancelled = true;
+            controller.abort();
         };
     }, [hydrated, sessionHydrated, loadAttempt, message, navigate, openProject, projectId, resetHistory, setActiveChatId, setBackgroundMode, setCanvasAppearance, setChatSessions, setConnections, setNodes, setShowImageInfo, setViewport]);
 

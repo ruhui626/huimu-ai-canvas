@@ -85,6 +85,9 @@ type providerConfig struct {
 	AudioVoice            string                 `json:"audioVoice"`
 	AudioFormat           string                 `json:"audioFormat"`
 	AudioSpeed            string                 `json:"audioSpeed"`
+	AudioSampleRate       string                 `json:"audioSampleRate"`
+	AudioPitch            string                 `json:"audioPitch"`
+	AudioVolume           string                 `json:"audioVolume"`
 	AudioInstructions     string                 `json:"audioInstructions"`
 	AudioLanguage         string                 `json:"audioLanguage"`
 	AudioDialect          string                 `json:"audioDialect"`

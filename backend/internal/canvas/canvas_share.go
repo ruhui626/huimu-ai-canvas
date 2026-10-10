@@ -41,6 +41,7 @@ var publicCanvasMetadataKeys = map[string]bool{
 	"generationMode": true, "generationType": true, "model": true, "size": true, "quality": true, "transparentBackground": true,
 	"count": true, "seconds": true, "vquality": true, "generateAudio": true, "watermark": true,
 	"audioVoice": true, "audioFormat": true, "audioSpeed": true, "audioInstructions": true,
+	"audioSampleRate": true, "audioPitch": true, "audioVolume": true,
 	"naturalWidth": true, "naturalHeight": true, "freeResize": true, "isBatchRoot": true,
 	"batchRootId": true, "batchChildIds": true, "batchUsesReferenceImages": true, "primaryImageId": true,
 	"imageBatchExpanded": true, "mimeType": true, "bytes": true, "durationMs": true, "hasAudio": true, "assetTags": true,

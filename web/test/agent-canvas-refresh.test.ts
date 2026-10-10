@@ -7,6 +7,10 @@ import { http } from "@/services/api/request";
 import { applyAgentCanvasPatches, initializeRemoteUserDataSession, refreshCanvasAfterAgent, resetRemoteUserDataSync, subscribeAgentCanvasRefresh, saveRemoteUserDataNow } from "@/services/user-data-sync";
 import { flushCanvasStorePersistence, useCanvasStore, type CanvasProject } from "@/stores/canvas/use-canvas-store";
 import { CanvasNodeType } from "@/types/canvas";
+import { resetUserDataSessionReadiness, trackUserDataSessionInitialization } from "@/services/user-data-session-readiness";
+import { loadCanvasProjectForEditing } from "@/services/user-data-sync";
+import { ensureCanvasNodeAsset } from "@/services/project-asset-sync";
+import { useAssetStore } from "@/stores/use-asset-store";
 
 const initial: CanvasProject = { id: "agent-test", revision: 1, title: "测试", createdAt: "2026-01-01", updatedAt: "2026-01-01", nodes: [], connections: [], chatSessions: [], activeChatId: null, viewport: { x: 0, y: 0, k: 1 } };
 const remote: CanvasProject = { ...initial, revision: 2, nodes: [{ id: "text-1", type: CanvasNodeType.Text, title: "剧本", position: { x: 20, y: 20 }, width: 320, height: 240, metadata: { content: "正文" } }] };
@@ -17,6 +21,7 @@ const originalSet = localforage.setItem;
 const originalWindow = globalThis.window;
 const indexed = new Map<string, unknown>();
 beforeEach(() => {
+    resetUserDataSessionReadiness();
     resetRemoteUserDataSync();
     Object.defineProperty(globalThis, "window", {
         configurable: true,
@@ -34,6 +39,7 @@ beforeEach(() => {
     }) as typeof localforage.setItem;
 });
 afterEach(async () => {
+    resetUserDataSessionReadiness();
     unsubscribe();
     restore();
     resetRemoteUserDataSync();
@@ -52,6 +58,59 @@ async function setup(project: CanvasProject = remote) {
     restore = () => mock.mockRestore();
     return mock;
 }
+
+test("canvas load and save wait for startup without blocking the initialization queue", async () => {
+    const mock = await setup();
+    resetRemoteUserDataSync();
+    let release!: () => void;
+    const restored = new Promise<void>((resolve) => { release = resolve; });
+    const init = trackUserDataSessionInitialization(async () => {
+        await restored;
+        await initializeRemoteUserDataSession("agent-user");
+    });
+    const load = loadCanvasProjectForEditing(initial.id);
+    const save = saveRemoteUserDataNow();
+    await Promise.resolve();
+    expect(mock).not.toHaveBeenCalled();
+    release();
+    await init;
+    await expect(load).resolves.toMatchObject({ id: initial.id, revision: 2 });
+    await save;
+});
+
+test("cancelled startup canvas load does not request remote data", async () => {
+    const mock = await setup();
+    let release!: () => void;
+    const init = trackUserDataSessionInitialization(() => new Promise<void>((resolve) => { release = resolve; }));
+    const controller = new AbortController();
+    const load = loadCanvasProjectForEditing(initial.id, { signal: controller.signal });
+    await Promise.resolve();
+    controller.abort();
+    await expect(load).rejects.toMatchObject({ name: "AbortError" });
+    release();
+    await init;
+    expect(mock).not.toHaveBeenCalled();
+});
+
+test("asset recovery does not mutate local assets before initialization and can be cancelled", async () => {
+    let release!: () => void;
+    const init = trackUserDataSessionInitialization(() => new Promise<void>((resolve) => { release = resolve; }));
+    const controller = new AbortController();
+    const assets = useAssetStore.getState().assets;
+    const save = ensureCanvasNodeAsset({
+        canvasId: initial.id,
+        node: { id: "recover-image", type: CanvasNodeType.Image, title: "生成图片", position: { x: 0, y: 0 }, width: 320, height: 240, metadata: { content: "https://example.com/image.png" } },
+        signal: controller.signal,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useAssetStore.getState().assets).toBe(assets);
+    controller.abort();
+    await expect(save).rejects.toMatchObject({ name: "AbortError" });
+    release();
+    await init;
+    expect(useAssetStore.getState().assets).toBe(assets);
+});
 
 test("successful Agent refresh projects nodes into the open editor and store", async () => {
     await setup();

@@ -15,6 +15,7 @@ export function LoadingContent({ node, theme, onOpenTaskDetails }: Pick<CanvasNo
         status: (node.metadata?.taskStatus || "running") as GenerationTask["status"],
         stage: node.metadata?.taskStage,
         mediaStage: node.metadata?.taskMediaStage,
+        progress: node.metadata?.taskProgress,
         officialStatus: node.metadata?.taskOfficialStatus,
         errorCode: node.metadata?.taskErrorCode,
     };
@@ -27,7 +28,7 @@ export function LoadingContent({ node, theme, onOpenTaskDetails }: Pick<CanvasNo
     return (
         <div className="flex h-full w-full flex-col items-center justify-center gap-2.5 px-5 text-center" style={{ color: theme.node.activeStroke }}>
             {submissionUncertain ? <AlertCircle className="size-10" /> : <div className="size-10 animate-spin rounded-full border-2" style={{ borderColor: theme.node.stroke, borderTopColor: theme.node.activeStroke }} />}
-            <span className="text-[var(--fs-tiny)] font-semibold">{stageLabel}</span>
+            {stageLabel !== statusLabel ? <span className="text-[var(--fs-tiny)] font-semibold">{stageLabel}</span> : null}
             {taskId ? (
                 <div className="flex w-full max-w-[210px] flex-col items-center gap-1.5">
                     <div className="max-w-full truncate text-[var(--fs-label)] font-medium" style={{ color: theme.node.text }}>

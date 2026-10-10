@@ -39,6 +39,49 @@ func TestProtocolRequestFromInputIncludesAudioSettings(t *testing.T) {
 	}
 }
 
+func TestDoubaoAdvancedAudioSettingsAreProtocolScoped(t *testing.T) {
+	for _, provider := range []string{"doubao-streaming-tts", "minimax-speech"} {
+		request := protocolRequestFromInput(canvasGenerationInput{Mode: "audio", Config: providerConfig{
+			InterfaceType: provider, AudioSampleRate: "24000", AudioPitch: "-3", AudioVolume: "1.5",
+		}})
+		options := request.ProviderOptions["doubao-streaming-tts"]
+		if provider == "doubao-streaming-tts" {
+			if options["sample_rate"] != float64(24000) || options["pitch_rate"] != float64(-3) || options["loudness_rate"] != float64(50) {
+				t.Fatalf("audio options = %#v", options)
+			}
+		} else if options != nil {
+			t.Fatal("Doubao options leaked to another protocol")
+		}
+	}
+}
+
+func TestDoubaoAudioPitchPreservesZero(t *testing.T) {
+	adapter, ok := loadOfficialFallbackRegistry().Resolve("doubao-streaming-tts")
+	if !ok {
+		t.Fatal("Doubao adapter missing")
+	}
+	for _, tc := range []struct {
+		value string
+		valid bool
+	}{
+		{"0", true}, {"-12", true}, {"12", true},
+		{"-13", false}, {"13", false}, {"invalid", false}, {"NaN", false}, {"Inf", false},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			request := protocolRequestFromInput(canvasGenerationInput{Mode: "audio", Prompt: "你好", Config: providerConfig{
+				InterfaceType: "doubao-streaming-tts", AudioSampleRate: "24000", AudioPitch: tc.value, AudioVolume: "1", AudioFormat: "wav", AudioSpeed: "1",
+			}})
+			if tc.value == "0" && request.ProviderOptions["doubao-streaming-tts"]["pitch_rate"] != float64(0) {
+				t.Fatal("default pitch was changed")
+			}
+			_, err := adapter.BuildCreate(context.Background(), protocol.RequestContext{Request: request})
+			if (err == nil) != tc.valid {
+				t.Fatalf("valid=%v, error=%v", tc.valid, err)
+			}
+		})
+	}
+}
+
 func officialVideoCreateBody(t *testing.T, input canvasGenerationInput) map[string]any {
 	t.Helper()
 	adapter, ok := loadOfficialFallbackRegistry().Resolve(strings.TrimSpace(input.Config.InterfaceType))

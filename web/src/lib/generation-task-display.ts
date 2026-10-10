@@ -52,14 +52,16 @@ export function generationTaskStatusLabel(task: GenerationTaskDisplayTarget) {
 export function generationTaskStageLabel(task: GenerationTaskDisplayTarget) {
     if (isGenerationTaskSubmissionUncertain(task)) return "为避免重复扣费，未自动重试";
     switch (task.stage) {
+        case "正在准备参考素材":
+            return "正在准备素材";
+        case "正在连接上游":
+            return "正在提交请求";
         case "queued":
         case "等待队列调度":
         case "后端接管任务":
             return "正在准备创作";
         case "generating":
         case "调用生成模型":
-        case "正在准备参考素材":
-        case "正在连接上游":
         case "作品创作中":
         case "上游生成中":
         case "后台仍在生成":

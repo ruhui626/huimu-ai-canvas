@@ -37,12 +37,17 @@
 | `create.body.text_prompt` | `{"$ref":"request.prompt"}` |
 | `create.body.references` | `{"$omitEmpty":{"$if":{"condition":{"$gt":[{"$len":{"$ref":"request.images"}},0]},"then":{"$map":{"from":{"$ref":"request.images"},"as":"media","in":{"image_url":{"$omitEmpty":{"$if":{"condition":{"$eq":[{"$ref":"media.source.type"},"url"]},"then":{"$ref":"media.url"},"else":null}}},"image_data":{"$omitEmpty":{"$if":{"condition":{"$eq":[{"$ref":"media.source.type"},"data"]},"then":{"$dataPayload":{"$ref":"media.value"}},"else":null}}}}}},"else":{"$if":{"condition":{"$gt":[{"$len":{"$ref":"request.audios"}},0]},"then":{"$concatArrays":[{"$map":{"from":{"$ref":"request.audios"},"as":"media","in":{"audio_url":{"$omitEmpty":{"$if":{"condition":{"$eq":[{"$ref":"media.source.type"},"url"]},"then":{"$ref":"media.url"},"else":null}}},"audio_data":{"$omitEmpty":{"$if":{"condition":{"$eq":[{"$ref":"media.source.type"},"data"]},"then":{"$dataPayload":{"$ref":"media.value"}},"else":null}}}}}},{"$if":{"condition":{"$and":[{"$ref":"request.extra.audioVoice"},{"$lt":[{"$len":{"$ref":"request.audios"}},3]}]},"then":[{"speaker":{"$ref":"request.extra.audioVoice"}}],"else":[]}}]},"else":{"$if":{"condition":{"$ref":"request.extra.audioVoice"},"then":[{"speaker":{"$ref":"request.extra.audioVoice"}}],"else":null}}}}}}}` |
 | `create.body.audio_config.format` | `{"$coalesce":[{"$ref":"request.extra.audioFormat"},"mp3"]}` |
+| `create.body.audio_config.sample_rate` | `{"$omitEmpty":{"$ref":"request.providerOptions.doubao-streaming-tts.sample_rate"}}` |
+| `create.body.audio_config.pitch_rate` | `{"$coalesce":[{"$ref":"request.providerOptions.doubao-streaming-tts.pitch_rate"},0]}` |
+| `create.body.audio_config.loudness_rate` | `{"$coalesce":[{"$ref":"request.providerOptions.doubao-streaming-tts.loudness_rate"},0]}` |
 | `create.body.audio_config.speech_rate` | `{"$omitEmpty":{"$if":{"condition":{"$ne":[{"$toFloat":{"$ref":"request.extra.audioSpeed"}},0]},"then":{"$add":[{"$multiply":[{"$toFloat":{"$ref":"request.extra.audioSpeed"}},100]},-100]},"else":null}}}` |
 | `create.headers.X-Api-Request-Id` | `{"$ref":"request.extra.idempotencyKey"}` |
 
 ## Provider 扩展键
 
-- 无额外扩展键。
+- `providerOptions.doubao-streaming-tts.loudness_rate`
+- `providerOptions.doubao-streaming-tts.pitch_rate`
+- `providerOptions.doubao-streaming-tts.sample_rate`
 
 动态模型或工作流允许使用文档声明的完整 `parameters/input/extra_body` 对象；该对象是协议本身的开放 schema，不会被宿主裁剪。
 
@@ -74,8 +79,8 @@
   "apiVersion": "yingce.plugin/v2",
   "id": "doubao-streaming-tts",
   "name": "豆包音频生成",
-  "version": "2.0.0",
-  "author": "Volcengine / 影策",
+  "version": "2.0.1",
+  "author": "Volcengine / 绘幕",
   "description": "豆包音频生成 独立请求协议插件。",
   "documentation": "<当前插件的完整 documentation，由 README.md 与 docs/interface.md 拼接而成；为避免 JSON 递归，此处不重复展开正文。>",
   "permissions": [
@@ -135,6 +140,270 @@
             "required": false,
             "mapping": "provider-specific fields",
             "description": "插件命名空间内的厂商扩展字段。"
+          }
+        ],
+        "validations": [
+          {
+            "assert": {
+              "$lte": [
+                {
+                  "$len": {
+                    "$ref": "request.prompt"
+                  }
+                },
+                3000
+              ]
+            },
+            "message": "豆包音频提示词（含引用文本）最多 3000 字符"
+          },
+          {
+            "assert": {
+              "$lte": [
+                {
+                  "$len": {
+                    "$ref": "request.images"
+                  }
+                },
+                1
+              ]
+            },
+            "message": "豆包音频最多使用 1 张参考图片"
+          },
+          {
+            "assert": {
+              "$lte": [
+                {
+                  "$add": [
+                    {
+                      "$len": {
+                        "$ref": "request.audios"
+                      }
+                    },
+                    {
+                      "$if": {
+                        "condition": {
+                          "$ref": "request.extra.audioVoice"
+                        },
+                        "then": 1,
+                        "else": 0
+                      }
+                    }
+                  ]
+                },
+                3
+              ]
+            },
+            "message": "豆包音频最多使用 3 个音频参考（指定音色也占一个名额）"
+          },
+          {
+            "assert": {
+              "$eq": [
+                {
+                  "$len": {
+                    "$ref": "request.videos"
+                  }
+                },
+                0
+              ]
+            },
+            "message": "豆包音频不支持参考视频"
+          },
+          {
+            "assert": {
+              "$or": [
+                {
+                  "$eq": [
+                    {
+                      "$len": {
+                        "$ref": "request.images"
+                      }
+                    },
+                    0
+                  ]
+                },
+                {
+                  "$and": [
+                    {
+                      "$eq": [
+                        {
+                          "$len": {
+                            "$ref": "request.audios"
+                          }
+                        },
+                        0
+                      ]
+                    },
+                    {
+                      "$eq": [
+                        {
+                          "$len": {
+                            "$ref": "request.extra.audioVoice"
+                          }
+                        },
+                        0
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            "message": "参考图片不能与参考音频或指定音色混用"
+          },
+          {
+            "assert": {
+              "$and": [
+                {
+                  "$gte": [
+                    {
+                      "$coalesce": [
+                        {
+                          "$if": {
+                            "condition": {
+                              "$ne": [
+                                {
+                                  "$toFloat": {
+                                    "$ref": "request.extra.audioSpeed"
+                                  }
+                                },
+                                0
+                              ]
+                            },
+                            "then": {
+                              "$toFloat": {
+                                "$ref": "request.extra.audioSpeed"
+                              }
+                            },
+                            "else": null
+                          }
+                        },
+                        1
+                      ]
+                    },
+                    0.5
+                  ]
+                },
+                {
+                  "$lte": [
+                    {
+                      "$coalesce": [
+                        {
+                          "$if": {
+                            "condition": {
+                              "$ne": [
+                                {
+                                  "$toFloat": {
+                                    "$ref": "request.extra.audioSpeed"
+                                  }
+                                },
+                                0
+                              ]
+                            },
+                            "then": {
+                              "$toFloat": {
+                                "$ref": "request.extra.audioSpeed"
+                              }
+                            },
+                            "else": null
+                          }
+                        },
+                        1
+                      ]
+                    },
+                    2
+                  ]
+                }
+              ]
+            },
+            "message": "豆包音频语速须在 0.5 到 2 倍之间"
+          },
+          {
+            "assert": {
+              "$and": [
+                {
+                  "$gte": [
+                    {
+                      "$coalesce": [
+                        {
+                          "$ref": "request.providerOptions.doubao-streaming-tts.pitch_rate"
+                        },
+                        0
+                      ]
+                    },
+                    -12
+                  ]
+                },
+                {
+                  "$lte": [
+                    {
+                      "$coalesce": [
+                        {
+                          "$ref": "request.providerOptions.doubao-streaming-tts.pitch_rate"
+                        },
+                        0
+                      ]
+                    },
+                    12
+                  ]
+                }
+              ]
+            },
+            "message": "豆包音频 pitch_rate 超出支持范围 [-12, 12]"
+          },
+          {
+            "assert": {
+              "$and": [
+                {
+                  "$gte": [
+                    {
+                      "$coalesce": [
+                        {
+                          "$ref": "request.providerOptions.doubao-streaming-tts.loudness_rate"
+                        },
+                        0
+                      ]
+                    },
+                    -50
+                  ]
+                },
+                {
+                  "$lte": [
+                    {
+                      "$coalesce": [
+                        {
+                          "$ref": "request.providerOptions.doubao-streaming-tts.loudness_rate"
+                        },
+                        0
+                      ]
+                    },
+                    100
+                  ]
+                }
+              ]
+            },
+            "message": "豆包音频 loudness_rate 超出支持范围 [-50, 100]"
+          },
+          {
+            "assert": {
+              "$in": [
+                {
+                  "$coalesce": [
+                    {
+                      "$ref": "request.providerOptions.doubao-streaming-tts.sample_rate"
+                    },
+                    48000
+                  ]
+                },
+                [
+                  8000,
+                  16000,
+                  24000,
+                  32000,
+                  44100,
+                  48000
+                ]
+              ]
+            },
+            "message": "豆包音频采样率不受支持"
           }
         ],
         "create": {
@@ -329,6 +598,27 @@
                     "$ref": "request.extra.audioFormat"
                   },
                   "mp3"
+                ]
+              },
+              "sample_rate": {
+                "$omitEmpty": {
+                  "$ref": "request.providerOptions.doubao-streaming-tts.sample_rate"
+                }
+              },
+              "pitch_rate": {
+                "$coalesce": [
+                  {
+                    "$ref": "request.providerOptions.doubao-streaming-tts.pitch_rate"
+                  },
+                  0
+                ]
+              },
+              "loudness_rate": {
+                "$coalesce": [
+                  {
+                    "$ref": "request.providerOptions.doubao-streaming-tts.loudness_rate"
+                  },
+                  0
                 ]
               },
               "speech_rate": {

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
@@ -97,6 +98,27 @@ func protocolRequestFromInput(input canvasGenerationInput) protocol.GenerationRe
 			options[name] = value
 		}
 		options["response_format"] = grokImageResponseFormat(input.ImageCapability)
+		request.ProviderOptions[input.Config.InterfaceType] = options
+	}
+	if input.Mode == "audio" && input.Config.InterfaceType == string(model.ChannelInterfaceDoubaoStreamingTTS) {
+		options := request.ProviderOptions[input.Config.InterfaceType]
+		if options == nil {
+			options = make(map[string]any)
+		}
+		if input.Config.AudioSampleRate != "" {
+			options["sample_rate"] = parseFloat(input.Config.AudioSampleRate, -1)
+		}
+		if input.Config.AudioPitch != "" {
+			// 音调 0 是合法默认值，不能使用将 0 视为缺省的 parseFloat。
+			pitch, err := strconv.ParseFloat(strings.TrimSpace(input.Config.AudioPitch), 64)
+			if err != nil || math.IsNaN(pitch) || math.IsInf(pitch, 0) {
+				pitch = -100 // 交由插件范围校验拒绝无效值。
+			}
+			options["pitch_rate"] = pitch
+		}
+		if input.Config.AudioVolume != "" {
+			options["loudness_rate"] = math.Round((parseFloat(input.Config.AudioVolume, -1) - 1) * 100)
+		}
 		request.ProviderOptions[input.Config.InterfaceType] = options
 	}
 	return request

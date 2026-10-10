@@ -16,6 +16,9 @@ export type Options = {
     audioVoice?: string;
     audioFormat?: string;
     audioSpeed?: string;
+    audioSampleRate?: string;
+    audioPitch?: string;
+    audioVolume?: string;
     audioLanguage?: string;
     audioDialect?: string;
     audioInstructions?: string;
@@ -142,6 +145,33 @@ export const GENERATION_OPTION_FIELDS = [
         "name": "audioSpeed",
         "node": "audioSpeed",
         "task": "audioSpeed"
+    },
+    {
+        "kind": "string",
+        "modes": [
+            "audio"
+        ],
+        "name": "audioSampleRate",
+        "node": "audioSampleRate",
+        "task": "audioSampleRate"
+    },
+    {
+        "kind": "string",
+        "modes": [
+            "audio"
+        ],
+        "name": "audioPitch",
+        "node": "audioPitch",
+        "task": "audioPitch"
+    },
+    {
+        "kind": "string",
+        "modes": [
+            "audio"
+        ],
+        "name": "audioVolume",
+        "node": "audioVolume",
+        "task": "audioVolume"
     },
     {
         "kind": "string",

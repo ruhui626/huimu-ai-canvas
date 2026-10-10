@@ -155,9 +155,9 @@ function ActiveTaskCard({
                                 {generationTaskStatusLabel(task)}
                             </span>
                         </span>
-                        <span className="mt-1 block truncate text-[var(--fs-label)]" style={{ color: theme.node.muted }} title={generationTaskStageLabel(task)}>
+                        {generationTaskStageLabel(task) !== generationTaskStatusLabel(task) ? <span className="mt-1 block truncate text-[var(--fs-label)]" style={{ color: theme.node.muted }} title={generationTaskStageLabel(task)}>
                             {generationTaskStageLabel(task)}
-                        </span>
+                        </span> : null}
                     </span>
                     {expanded ? <ChevronUp className="mt-0.5 size-3.5 shrink-0" style={{ color: theme.node.muted }} /> : <ChevronDown className="mt-0.5 size-3.5 shrink-0" style={{ color: theme.node.muted }} />}
                 </div>

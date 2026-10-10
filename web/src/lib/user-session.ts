@@ -17,8 +17,10 @@ import { clearResourceAccessCache } from "@/services/api/resources";
 import { clearResourceBlobCache } from "@/services/resource-blob-cache";
 import { withGenerationConsumersPaused } from "@/services/generation-consumer-lifecycle";
 import { recordDiagnosticEvent } from "@/services/diagnostics/client-diagnostics";
+import { resetUserDataSessionReadiness, trackUserDataSessionInitialization } from "@/services/user-data-session-readiness";
 
 export async function switchUserStorageScope(userId?: string | null) {
+    resetUserDataSessionReadiness();
     await withGenerationConsumersPaused(async () => {
         await withRemoteUserDataSyncExclusive(async () => {
             await Promise.all([flushCanvasStorePersistence(), flushAssetStorePersistence()]);
@@ -52,8 +54,9 @@ export async function applyUserSession(payload: AuthSessionPayload) {
         useUserStore.getState().setDrawingEngine(payload.drawingEngine);
         useUserStore.getState().setFeatures(payload.features);
         installRemoteUserDataAutoSync();
+        const initialization = trackUserDataSessionInitialization(() => hydrateUserSessionData(payload, generation));
         useUserStore.getState().setHydrated(true);
-        void hydrateUserSessionData(payload, generation).catch((error) => {
+        void initialization.catch((error) => {
             if (isCurrentSession(generation, nextUserId)) console.warn("用户工作区后台初始化失败，基础页面仍可继续", error);
         });
     } finally {
@@ -98,6 +101,24 @@ async function hydrateUserSessionData(payload: AuthSessionPayload, generation: n
     if (!hasPersistedValue(plugins)) usePluginStore.setState({ installations: [], runtimeStatuses: {}, pluginStates: {} });
     if (!persistedCreationPreferences) useCreationPreferencesStore.setState({ preferences: {} });
 
+    // 同步就绪只依赖本地恢复，不等待模型目录网络请求。
+    if (userId) {
+        await initializeRemoteUserDataSession(userId, () => isCurrentSession(generation, userId));
+    } else {
+        resetRemoteUserDataSync();
+    }
+    if (!isCurrentSession(generation, userId)) return;
+    void refreshSessionModelCatalog(userId, generation, Boolean(persistedConfig));
+    recordDiagnosticEvent({
+        category: "navigation",
+        level: "info",
+        code: "startup.workspace_background_ready",
+        message: "工作区后台状态初始化完成",
+        durationMs: performance.now() - startedAt,
+    });
+}
+
+async function refreshSessionModelCatalog(userId: string, generation: number, persistedConfig: boolean) {
     try {
         const catalog = await getModelCatalog();
         if (!isCurrentSession(generation, userId)) return;
@@ -117,25 +138,6 @@ async function hydrateUserSessionData(payload: AuthSessionPayload, generation: n
         }
     } catch (error) {
         if (isCurrentSession(generation, userId)) console.warn("模型目录后台刷新失败，保留本地配置", error);
-    }
-
-    if (userId) {
-        try {
-            await initializeRemoteUserDataSession(userId);
-        } catch (error) {
-            if (isCurrentSession(generation, userId)) console.warn("远端用户数据后台同步初始化失败", error);
-        }
-    } else {
-        resetRemoteUserDataSync();
-    }
-    if (isCurrentSession(generation, userId)) {
-        recordDiagnosticEvent({
-            category: "navigation",
-            level: "info",
-            code: "startup.workspace_background_ready",
-            message: "工作区后台状态初始化完成",
-            durationMs: performance.now() - startedAt,
-        });
     }
 }
 

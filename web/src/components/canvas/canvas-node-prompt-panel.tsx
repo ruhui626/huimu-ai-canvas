@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerE
 import { ArrowUp, ChevronDown, FileText, ImagePlus, LayoutList, LoaderCircle, Maximize2, Music2, SlidersHorizontal, Video, WandSparkles, X } from "lucide-react";
 
 import { ModelPicker } from "@/components/model-picker";
+import { doubaoAudioReferenceHint, isDoubaoAudioConfig } from "@/lib/audio-generation";
 import { modelOptionName, resolveModelChannel, useEffectiveConfig } from "@/stores/use-config-store";
 import { canonicalGenerationMetadata, nodeGenerationPrompt } from "@/lib/canvas/generation-contract";
 import { PROMPT_EDITOR_VIEWPORT_MARGIN } from "@/lib/canvas/canvas-prompt-editor-size";
@@ -151,7 +152,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
             vquality: node.metadata?.vquality || globalConfig.vquality,
             videoGenerateAudio: node.metadata?.generateAudio ?? globalConfig.videoGenerateAudio,
             videoWatermark: node.metadata?.watermark ?? globalConfig.videoWatermark,
-            audioVoice: node.metadata?.audioVoice || globalConfig.audioVoice,
+            audioVoice: node.metadata?.audioVoice ?? globalConfig.audioVoice,
             audioFormat: node.metadata?.audioFormat || globalConfig.audioFormat,
             audioSpeed: node.metadata?.audioSpeed || globalConfig.audioSpeed,
         }, mode),
@@ -511,6 +512,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                             config={config}
                             buttonClassName="canvas-node-composer-settings-trigger [&>span]:min-w-0 [&_.lucide]:!size-3"
                             onConfigChange={(key, value) => onConfigChange(node.id, audioConfigPatch(key, value))}
+                            onReset={() => onConfigChange(node.id, { audioVoice: "", audioFormat: "wav", audioSpeed: "1", audioSampleRate: "24000", audioPitch: "0", audioVolume: "1" })}
                         />
                     ) : null}
                     {renderSubmitButton(expanded)}
@@ -534,6 +536,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                         onReplaceReference={onReplaceReference ? (oldReference, sourceNodeId) => onReplaceReference(node.id, oldReference, sourceNodeId) : undefined}
                         onReplaceReferenceFiles={onReplaceReferenceFiles ? (oldReference, files) => onReplaceReferenceFiles(node.id, oldReference, files) : undefined}
                     />
+                    {mode === "audio" && isDoubaoAudioConfig(config) ? <p className="px-3 text-xs" style={{ color: theme.node.muted }}>{doubaoAudioReferenceHint(activeReferences.filter((item) => item.kind === "image").length, activeReferences.filter((item) => item.kind === "audio").length)} 提示词合并引用文本后最多 3000 字符。</p> : null}
                     <CanvasResourceMentionTextarea
                         value={prompt}
                         references={textareaReferences}

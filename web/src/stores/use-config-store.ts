@@ -131,6 +131,9 @@ export type AiConfig = {
     audioVoice: string;
     audioFormat: string;
     audioSpeed: string;
+    audioSampleRate: string;
+    audioPitch: string;
+    audioVolume: string;
     audioLanguage: string;
     audioDialect: string;
     audioInstructions: string;
@@ -183,8 +186,11 @@ export const defaultConfig: AiConfig = {
     textModel: "",
     audioModel: "",
     audioVoice: "alloy",
-    audioFormat: "mp3",
+    audioFormat: "",
     audioSpeed: "1",
+    audioSampleRate: "24000",
+    audioPitch: "0",
+    audioVolume: "1",
     audioLanguage: "",
     audioDialect: "",
     audioInstructions: "",
@@ -444,6 +450,9 @@ export function normalizeConfigSnapshot(snapshot: ConfigStoreSnapshot | undefine
             audioVoice: config.audioVoice || defaultConfig.audioVoice,
             audioFormat: config.audioFormat || defaultConfig.audioFormat,
             audioSpeed: config.audioSpeed || defaultConfig.audioSpeed,
+            audioSampleRate: config.audioSampleRate ?? defaultConfig.audioSampleRate,
+            audioPitch: config.audioPitch ?? defaultConfig.audioPitch,
+            audioVolume: config.audioVolume ?? defaultConfig.audioVolume,
             audioLanguage: config.audioLanguage || "",
             audioDialect: config.audioDialect || "",
             audioInstructions: config.audioInstructions || "",

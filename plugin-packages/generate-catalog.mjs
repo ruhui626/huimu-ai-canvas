@@ -578,6 +578,20 @@ add({
 
 add({
   id: "doubao-streaming-tts", providerId: "doubao-streaming-tts", name: "豆包音频生成", vendor: "Volcengine", capability: "audio",
+  version: "2.0.1",
+  validations: [
+    { assert: lte(len(ref("request.prompt")), 3000), message: "豆包音频提示词（含引用文本）最多 3000 字符" },
+    { assert: lte(len(ref("request.images")), 1), message: "豆包音频最多使用 1 张参考图片" },
+    { assert: lte(addNumbers(len(ref("request.audios")), conditional(ref("request.extra.audioVoice"), 1, 0)), 3), message: "豆包音频最多使用 3 个音频参考（指定音色也占一个名额）" },
+    { assert: eq(len(ref("request.videos")), 0), message: "豆包音频不支持参考视频" },
+    { assert: { $or: [eq(len(ref("request.images")), 0), and(eq(len(ref("request.audios")), 0), eq(len(ref("request.extra.audioVoice")), 0))] }, message: "参考图片不能与参考音频或指定音色混用" },
+    { assert: and(gte(coalesce(nonZeroFloat(ref("request.extra.audioSpeed")), 1), 0.5), lte(coalesce(nonZeroFloat(ref("request.extra.audioSpeed")), 1), 2)), message: "豆包音频语速须在 0.5 到 2 倍之间" },
+    ...[["pitch_rate", -12, 12], ["loudness_rate", -50, 100]].map(([key, min, max]) => ({
+      assert: and(gte(coalesce(ref(`request.providerOptions.doubao-streaming-tts.${key}`), 0), min), lte(coalesce(ref(`request.providerOptions.doubao-streaming-tts.${key}`), 0), max)),
+      message: `豆包音频 ${key} 超出支持范围 [${min}, ${max}]`
+    })),
+    { assert: { $in: [coalesce(ref("request.providerOptions.doubao-streaming-tts.sample_rate"), 48000), [8000, 16000, 24000, 32000, 44100, 48000]] }, message: "豆包音频采样率不受支持" }
+  ],
   baseUrl: "https://openspeech.bytedance.com", auth: { type: "header", field: "apiKey", header: "X-Api-Key" }, params: audioParams,
   notes: "火山引擎 seed-audio-1.0 非流式音频生成。POST /api/v3/tts/create。不传 references 为纯文本生成；连接音频时写入 references 的 audio_url 或 audio_data，最多 3 段，参考音频少于 3 段且指定了音色时再追加一个 speaker；连接图片时写入 image_url 或 image_data，最多 1 张。图片和音频不能同时使用。没有参考素材时，speaker 只在用户明确指定音色时发送，且官方仅接受语音合成 2.0 音色或复刻音色。text_prompt 引用参考音频时使用 @Audio1、@Audio2。响应是单个 JSON，audio 为 Base64，url 两小时过期。",
   create: jsonCreate("/api/v3/tts/create", {
@@ -605,6 +619,9 @@ add({
     )),
     audio_config: {
       format: coalesce(ref("request.extra.audioFormat"), "mp3"),
+      sample_rate: omit(ref("request.providerOptions.doubao-streaming-tts.sample_rate")),
+      pitch_rate: coalesce(ref("request.providerOptions.doubao-streaming-tts.pitch_rate"), 0),
+      loudness_rate: coalesce(ref("request.providerOptions.doubao-streaming-tts.loudness_rate"), 0),
       speech_rate: omit(conditional(ne(toFloat(ref("request.extra.audioSpeed")), 0), addNumbers(multiply(toFloat(ref("request.extra.audioSpeed")), 100), -100)))
     }
   }, {

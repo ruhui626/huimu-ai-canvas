@@ -4,7 +4,7 @@ import { XCircle } from "lucide-react";
 
 import { CanvasImagePreview } from "@/components/canvas/canvas-image-preview";
 import { TaskDetailItem } from "./canvas-project-feedback";
-import { canCancelGenerationTask, generationTaskShowsProgress, generationTaskStageLabel } from "@/lib/generation-task-display";
+import { canCancelGenerationTask, generationTaskShowsProgress, generationTaskStageLabel, generationTaskStatusLabel, mediaDeliverySummary } from "@/lib/generation-task-display";
 import { formatTaskLog, type GenerationTask, type TaskLog } from "@/services/api/task-center";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 import { VideoPlayer } from "@/components/video-player";
@@ -36,7 +36,9 @@ export function CanvasProjectStatusDialogs({ theme, task, taskLogs, taskLoading,
                 {task ? (
                     <div className="space-y-4 text-sm">
                         <div className="grid grid-cols-2 gap-3 rounded-lg border p-3" style={{ borderColor: theme.node.stroke, background: theme.node.panel }}>
+                            <TaskDetailItem label="任务状态" value={generationTaskStatusLabel(task)} />
                             <TaskDetailItem label="当前阶段" value={generationTaskStageLabel(task)} />
+                            {task.mediaStage ? <TaskDetailItem label="作品保存" value={mediaDeliverySummary(task.status, task.mediaStage)} /> : null}
                             {generationTaskShowsProgress(task) ? <TaskDetailItem label="进度" value={`${task.progress ?? 0}%`} /> : null}
                             <TaskDetailItem label="模型" value={task.model ? modelDisplayName(config, task.model) : "默认模型"} />
                             <TaskDetailItem label="任务 ID" value={task.id} />

@@ -66,9 +66,9 @@ export const TaskListItem = memo(function TaskListItem({ task, onCancelTask }: {
                         <Clock3 className="size-2.5 shrink-0" />
                         <span className="truncate">{durationLabel}</span>
                         {creditsEnabled && billingLabel ? <span className="truncate">· {billingLabel}</span> : null}
-                        <span className="mt-0.5 block truncate text-[10px] leading-3 text-foreground/45" title={generationTaskStageLabel(task)}>
+                        {generationTaskStageLabel(task) !== generationTaskStatusLabel(task) ? <span className="mt-0.5 block truncate text-[10px] leading-3 text-foreground/45" title={generationTaskStageLabel(task)}>
                             {generationTaskStageLabel(task)}
-                        </span>
+                        </span> : null}
                     </span>
                 </span>
                 {expanded ? <ChevronUp className="mt-0.5 size-3.5 shrink-0 text-foreground/40" /> : <ChevronDown className="mt-0.5 size-3.5 shrink-0 text-foreground/40" />}

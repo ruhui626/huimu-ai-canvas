@@ -78,6 +78,9 @@ type Config struct {
 	AudioVoice            string                    `json:"audioVoice"`
 	AudioFormat           string                    `json:"audioFormat"`
 	AudioSpeed            string                    `json:"audioSpeed"`
+	AudioSampleRate       string                    `json:"audioSampleRate"`
+	AudioPitch            string                    `json:"audioPitch"`
+	AudioVolume           string                    `json:"audioVolume"`
 	AudioInstructions     string                    `json:"audioInstructions"`
 	SystemPrompt          string                    `json:"systemPrompt"`
 	CapabilityConfig      *ModelCapabilityConfig    `json:"capabilityConfig"`

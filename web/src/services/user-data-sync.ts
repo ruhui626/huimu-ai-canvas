@@ -1,4 +1,5 @@
 import { canonicalize } from "json-canonicalize";
+import { waitForUserDataSessionInitialization } from "./user-data-session-readiness";
 import { resourceFileUrl, resourceIdFromStorageKey } from "@/services/api/resources";
 import {
     deleteRemoteAssets,
@@ -52,8 +53,10 @@ const verifiedAssets = new Set<string>();
 const remoteProjectLoadPromises = new Map<string, Promise<CanvasProject | undefined>>();
 const REMOTE_SYNC_RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 16_000, 30_000] as const;
 
-export async function initializeRemoteUserDataSession(userId: string) {
+export async function initializeRemoteUserDataSession(userId: string, isCurrent: () => boolean = () => true) {
+    const epoch = sessionEpoch;
     await withRemoteUserDataSyncExclusive(async () => {
+        if (epoch !== sessionEpoch || !isCurrent()) throw new DOMException("会话已切换，已停止旧会话初始化", "AbortError");
         resetRemoteUserDataSync();
         activeRemoteUserId = userId;
         incrementalSession = true;
@@ -70,9 +73,11 @@ function liveCanvasIfUnchanged(id: string, snapshot: CanvasProject | null | unde
     return live && sameCanvasContent(live, snapshot) ? live : undefined;
 }
 
-export async function loadCanvasProjectForEditing(id: string, options: { latest?: boolean; historyRestore?: { snapshotId: string; revision: number }; onLoad?: (project: CanvasProject) => void } = {}) {
+export async function loadCanvasProjectForEditing(id: string, options: { latest?: boolean; historyRestore?: { snapshotId: string; revision: number }; onLoad?: (project: CanvasProject) => void; signal?: AbortSignal } = {}) {
+    await waitForUserDataSessionInitialization(options.signal);
     const epoch = sessionEpoch;
     const request = withRemoteUserDataSyncExclusive(async () => {
+        if (options.signal?.aborted) throw new DOMException("已取消画布加载", "AbortError");
         if (epoch !== sessionEpoch) throw new Error("账号已切换，请重新打开画布");
         requireRemoteUserDataBaseline();
         const scope = getActiveUserScope();
@@ -694,6 +699,7 @@ export async function deleteCanvasProjectsWithRemoteSync(ids: string[]) {
 }
 
 export async function saveRemoteUserDataNow(input?: string | readonly string[] | { force?: boolean; repairMissingResources?: boolean }) {
+    await waitForUserDataSessionInitialization();
     const projectId = typeof input === "string" || Array.isArray(input) ? (input as string | readonly string[]) : undefined;
     const options = input && typeof input === "object" && !Array.isArray(input) ? (input as { force?: boolean; repairMissingResources?: boolean }) : {};
     const epoch = sessionEpoch;

@@ -114,6 +114,39 @@ export function audioVoiceOptionsForConfig(config: AiConfig) {
     return openAIAudioVoiceOptions;
 }
 
+export const doubaoSampleRates = [8000, 16000, 24000, 32000, 44100, 48000];
+
+function boundedAudioNumber(value: string | undefined, fallback: number, min: number, max: number) {
+    const number = value?.trim() ? Number(value) : fallback;
+    return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+}
+
+export function audioSpeedForConfig(config: AiConfig) {
+    return isDoubaoAudioConfig(config) ? String(boundedAudioNumber(config.audioSpeed, 1, 0.5, 2)) : normalizeAudioSpeedValue(config.audioSpeed);
+}
+
+// 专属参数只进入豆包命名空间，不随通用音频设置传给其他协议。
+export function doubaoAudioOptions(config: AiConfig): Record<string, number> {
+    if (!isDoubaoAudioConfig(config)) return {};
+    const sampleRate = Number(config.audioSampleRate);
+    return {
+        sample_rate: doubaoSampleRates.includes(sampleRate) ? sampleRate : 24000,
+        pitch_rate: Math.round(boundedAudioNumber(config.audioPitch, 0, -12, 12)),
+        loudness_rate: Math.round((boundedAudioNumber(config.audioVolume, 1, 0.5, 2) - 1) * 100),
+    };
+}
+
+export function doubaoAudioPromptError(prompt: string) {
+    const length = Array.from(prompt).length;
+    return length > 3000 ? `豆包音频提示词（含引用文本）共 ${length} 字符，最多 3000 字符，请缩短正文或演绎要求` : "";
+}
+
+export function doubaoAudioReferenceHint(images: number, audios: number) {
+    if (images) return "参考图片生成：请输入要合成的台词；图片不能与参考音频或指定音色混用。";
+    if (audios) return "参考音频生成：用 @ 引用音频并说明台词、音色或演绎要求；参考不等于原音频复制。";
+    return "纯文本生成：描述声音、情绪和台词；也可 @ 文本节点，并说明如何演绎。";
+}
+
 export function audioFormatOptionsForConfig(config: AiConfig) {
     if (isDoubaoAudioConfig(config)) return doubaoAudioFormatOptions;
     if (isMiniMaxAudioConfig(config)) return minimaxAudioFormatOptions;
@@ -124,7 +157,7 @@ export function normalizeAudioVoiceForConfig(config: AiConfig, value: string) {
     const options = audioVoiceOptionsForConfig(config);
     const normalized = String(value || "").trim();
     if (isDoubaoAudioConfig(config)) {
-        if (!normalized || normalized === "alloy") return "";
+        if (!normalized || [...openAIAudioVoiceOptions, ...minimaxVoiceOptions].some((item) => item.value === normalized)) return "";
         return normalized;
     }
     if (isMiniMaxAudioConfig(config)) return minimaxVoiceOptions.some((item) => item.value === normalized) ? normalized : minimaxVoiceOptions[0].value;
@@ -134,7 +167,7 @@ export function normalizeAudioVoiceForConfig(config: AiConfig, value: string) {
 
 export function normalizeAudioFormatForConfig(config: AiConfig, value: string) {
     const options = audioFormatOptionsForConfig(config);
-    return options.some((item) => item.value === value) ? value : "mp3";
+    return options.some((item) => item.value === value) ? value : isDoubaoAudioConfig(config) ? "wav" : "mp3";
 }
 
 export function audioVoiceLabelForConfig(config: AiConfig, value: string) {

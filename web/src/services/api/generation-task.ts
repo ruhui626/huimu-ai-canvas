@@ -1,4 +1,4 @@
-import { normalizeAudioFormatForConfig, normalizeAudioVoiceForConfig } from "@/lib/audio-generation";
+import { audioSpeedForConfig, doubaoAudioOptions, doubaoAudioPromptError, isDoubaoAudioConfig, normalizeAudioFormatForConfig, normalizeAudioVoiceForConfig } from "@/lib/audio-generation";
 import { getMediaBlob } from "@/services/file-storage";
 import { getImageBlob } from "@/services/image-storage";
 import { resourceIdFromStorageKey, resourceStorageKey, uploadResourceFile } from "@/services/api/resources";
@@ -228,6 +228,10 @@ function throwIfAborted(signal?: AbortSignal) {
 }
 
 function assertClientPromptLimit(mode: BackendGenerationMode, prompt: string, config: AiConfig, metadata?: Record<string, unknown>) {
+    if (mode === "audio" && isDoubaoAudioConfig(config) && (config.taskWorkflowProvider || "model") === "model") {
+        const error = doubaoAudioPromptError(prompt);
+        if (error) throw new Error(error);
+    }
     if (mode !== "image" || metadata?.promptTemplateOperation || (config.taskWorkflowProvider || "model") !== "model") return;
     const requestConfig = resolveModelRequestConfig(config, config.model);
     const promptLimitError = grokImagePromptLimitError(prompt, requestConfig.interfaceType, requestConfig.model);
@@ -242,6 +246,19 @@ async function prepareGenerationReferences({
     referenceAudios = [],
     mask,
 }: Pick<BackendGenerationTaskOptions, "config" | "mode" | "referenceImages" | "referenceVideos" | "referenceAudios" | "mask">): Promise<PreparedGenerationReferences> {
+    if (mode === "audio" && isDoubaoAudioConfig(config) && !resolveGenerationWorkflowExecution(config, mode)) {
+        if (referenceVideos.length) throw new Error("豆包音频不支持参考视频");
+        if (referenceImages.length > 1 || referenceAudios.length > 3) throw new Error("豆包音频最多使用 1 张图片或 3 段音频");
+        const voice = normalizeAudioVoiceForConfig(config, config.audioVoice);
+        if (referenceImages.length && (referenceAudios.length || voice)) throw new Error("参考图片不能与参考音频或指定音色混用，请移除其中一种");
+        if (voice && referenceAudios.length >= 3) throw new Error("指定音色也占一个参考名额，请移除一段音频或取消指定音色");
+        for (const media of [...referenceImages, ...referenceAudios]) {
+            if (media.bytes && media.bytes > 10 * 1024 * 1024) throw new Error(`参考素材「${media.name || "未命名"}」超过 10 MB，请缩小后重试`);
+        }
+        for (const audio of referenceAudios) {
+            if (audio.durationMs && audio.durationMs > 30_000) throw new Error(`参考音频「${audio.name || "未命名"}」超过 30 秒，请先截取片段`);
+        }
+    }
     // asset:// 仅视频生成可用；Agent Plan Seedream 与 Seedance 共用 /api/plan/v3，不能按 BaseURL 误判。
     const preferArkAssetUrl = mode === "video" && usesArkVideoAssetReference(config);
     const preparedImages = await Promise.all(referenceImages.map((image) => prepareBackendImageReference(image, preferArkAssetUrl)));
@@ -411,7 +428,12 @@ export function backendProviderConfig(config: AiConfig, mode: BackendGenerationM
         videoArkPrivateAssetUpload: config.videoArkPrivateAssetUpload,
         audioVoice: normalizeAudioVoiceForConfig(config, config.audioVoice),
         audioFormat: normalizeAudioFormatForConfig(config, config.audioFormat),
-        audioSpeed: config.audioSpeed,
+        audioSpeed: mode === "audio" && isDoubaoAudioConfig(config) ? audioSpeedForConfig(config) : config.audioSpeed,
+        ...(mode === "audio" && isDoubaoAudioConfig(config) ? {
+            audioSampleRate: String(doubaoAudioOptions(config).sample_rate || ""),
+            audioPitch: String(doubaoAudioOptions(config).pitch_rate),
+            audioVolume: String(1 + doubaoAudioOptions(config).loudness_rate / 100),
+        } : {}),
         audioLanguage: config.audioLanguage,
         audioDialect: config.audioDialect,
         audioInstructions: config.audioInstructions,

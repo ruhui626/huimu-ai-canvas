@@ -49,8 +49,17 @@ describe("生成任务取消边界", () => {
 });
 
 describe("生成任务用户可见阶段", () => {
-    test("不向用户暴露参考素材准备和上游连接等技术阶段", () => {
-        expect(generationTaskStageLabel({ status: "running", stage: "正在准备参考素材" })).toBe("作品创作中");
-        expect(generationTaskStageLabel({ status: "running", stage: "正在连接上游" })).toBe("作品创作中");
+    test("区分素材准备、请求提交和模型创作", () => {
+        expect(generationTaskStageLabel({ status: "running", stage: "正在准备参考素材" })).toBe("正在准备素材");
+        expect(generationTaskStageLabel({ status: "running", stage: "正在连接上游" })).toBe("正在提交请求");
+        expect(generationTaskStageLabel({ status: "running", stage: "上游生成中" })).toBe("作品创作中");
+    });
+    test("只显示允许阶段的已有进度，不为准备、保存或提交不确定阶段显示百分比", () => {
+        expect(generationTaskShowsProgress({ status: "running", stage: "上游生成中", progress: 42 })).toBe(true);
+        expect(generationTaskShowsProgress({ status: "running", stage: "上游生成中" })).toBe(false);
+        for (const stage of ["queued", "正在准备参考素材", "正在连接上游", "submission_unknown"]) {
+            expect(generationTaskShowsProgress({ status: "running", stage, progress: 42 })).toBe(false);
+        }
+        expect(generationTaskShowsProgress({ status: "running", mediaStage: "upload", progress: 100 })).toBe(false);
     });
 });

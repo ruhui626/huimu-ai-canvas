@@ -16,6 +16,7 @@ import { createProviderNeutralGenerationTaskEffectStore } from "@/services/provi
 import { getCachedResourceBlob } from "@/services/resource-blob-cache";
 import { loadAssetsForUse, saveRemoteUserDataNow } from "@/services/user-data-sync";
 import { getActiveUserScope } from "@/lib/user-scope";
+import { waitForUserDataSessionInitialization } from "./user-data-session-readiness";
 import { allocateGeneratedAssetTitle, generatedAssetTitleBase, generationTaskAssetTitleContext } from "@/lib/generated-asset-title";
 import { normalizeAssetCategory } from "@/lib/asset-category";
 import { runGenerationConsumer } from "@/services/generation-consumer-lifecycle";
@@ -98,6 +99,7 @@ export function ensureCanvasNodeAsset(options: EnsureCanvasNodeAssetOptions) {
 }
 
 async function persistCanvasNodeAsset(options: EnsureCanvasNodeAssetOptions): Promise<CanvasNodeAssetResult> {
+    await waitForUserDataSessionInitialization(options.signal);
     throwIfAborted(options.signal);
     const store = useAssetStore.getState();
     let asset = findCanvasNodeAsset(store.assets, options.node, options.canvasId, options.taskId);

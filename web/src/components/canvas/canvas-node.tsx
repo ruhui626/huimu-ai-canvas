@@ -293,7 +293,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                 >
                     {/* 节点状态徽章（对应 #97 决策2：左上角 loading/success/error，近距离确认信号）*/}
                     {showChrome && data.metadata?.status && data.metadata.status !== "idle" && data.type !== CanvasNodeType.Frame ? (
-                        <NodeStatusBadge status={data.metadata.status} />
+                        <NodeStatusBadge status={data.metadata.status} saving={Boolean(data.metadata.taskMediaStage) && (!data.metadata.taskStatus || data.metadata.taskStatus === "queued" || data.metadata.taskStatus === "running")} />
                     ) : null}
                     <CanvasNodeContent
                         node={data}
@@ -661,16 +661,17 @@ function nodeTypeIcon(node: CanvasNodeData) {
 }
 
 // 节点状态徽章（对应 #97 决策2：左上角状态指示，loading/success/error）
-function NodeStatusBadge({ status }: { status: "loading" | "success" | "error" }) {
+function NodeStatusBadge({ status, saving = false }: { status: "loading" | "success" | "error"; saving?: boolean }) {
     if (status === "loading") {
+        const label = saving ? "保存中" : "生成中";
         return (
             <div
                 className="pointer-events-none absolute left-2 top-2 z-20 flex items-center gap-1 rounded-full px-2 py-0.5 backdrop-blur-sm"
                 style={{ background: "color-mix(in oklch, var(--status-loading) 20%, transparent)", color: "var(--status-loading)" }}
-                aria-label="生成中"
+                aria-label={label}
             >
                 <span className="size-1.5 animate-pulse rounded-full" style={{ background: "var(--status-loading)" }} />
-                <span className="text-[var(--fs-micro)] font-medium leading-none">生成中</span>
+                <span className="text-[var(--fs-micro)] font-medium leading-none">{label}</span>
             </div>
         );
     }
