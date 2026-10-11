@@ -347,7 +347,7 @@ function ratioPreview(ratio: string) {
     if (ratio === "4:3") return { width: 4, height: 3 };
     if (ratio === "3:4") return { width: 3, height: 4 };
     if (ratio === "21:9") return { width: 21, height: 9 };
-    if (ratio === "adaptive") return { width: 0, height: 0 };
+    if (ratio === "adaptive" || ratio === "auto") return { width: 1, height: 1 };
     return { width: 16, height: 9 };
 }
 

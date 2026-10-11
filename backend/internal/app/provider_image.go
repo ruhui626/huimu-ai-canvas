@@ -441,8 +441,10 @@ func volcengineArkImageDataURLs(ctx context.Context, config providerConfig, payl
 		if !isPublicMediaURL(value) {
 			return nil, errors.New("火山方舟图片接口没有返回可下载的图片")
 		}
-		// 方舟默认返回临时 CDN 地址。必须由后端下载成内联结果，后续资源持久化才能
-		// 原子地写入服务器或用户配置的对象存储，且不依赖浏览器跨域访问方舟 CDN。
+		if usesTaskMediaDelivery(ctx) {
+			continue // Delivery checkpoints this URL before downloading.
+		}
+		// Non-worker callers retain the inline response contract.
 		data, mimeType, err := getProviderExternalBinary(withProviderRequestKind(ctx, "download"), config, value)
 		if err != nil {
 			return nil, fmt.Errorf("火山方舟图片结果下载失败：%w", err)

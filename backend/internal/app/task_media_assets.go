@@ -40,12 +40,21 @@ func (s *Service) mediaTaskProject(task *model.Task) (string, error) {
 	return project.ID, nil
 }
 
-// AudioOutputDurationMs returns the measured duration of the first persisted
-// audio output. A missing or unmeasured duration is returned as an error so
-// per-second billing can enter review instead of silently undercharging.
+// AudioOutputDurationMs returns Seed Audio's provider-reported original length,
+// or the first persisted output's measured length for other providers.
+// Missing billing duration requires review instead of silently undercharging.
 func (s *Service) AudioOutputDurationMs(task model.Task) (int64, error) {
 	if capabilityFromTaskType(task.Type) != "audio" {
 		return 0, nil
+	}
+	var input canvasGenerationInput
+	if err := json.Unmarshal([]byte(task.InputJSON), &input); err == nil && input.Config.InterfaceType == "doubao-streaming-tts" {
+		return seedAudioBillingDuration(task.ResultJSON)
+	}
+	// Result metadata also survives route resolution and media-save recovery.
+	var result map[string]json.RawMessage
+	if json.Unmarshal([]byte(task.ResultJSON), &result) == nil && result["seedAudioTiming"] != nil {
+		return seedAudioBillingDuration(task.ResultJSON)
 	}
 	resourceID, _ := taskOutputResource(task.ResultJSON, task.Type)
 	if resourceID == "" {

@@ -80,8 +80,7 @@ export function BatchGenerationSettingsDialog({ open, config, rowCount, concurre
                         theme={theme}
                         showTitle={false}
                         showCount={false}
-                        quickCount={4}
-                        maxCount={10}
+                        maxCount={4}
                         className="w-full space-y-3"
                     />
                 </div>

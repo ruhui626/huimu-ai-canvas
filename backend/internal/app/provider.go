@@ -252,7 +252,11 @@ func (s *Service) processCanvasGenerationTask(ctx context.Context, userID string
 	}
 	switch input.Mode {
 	case "image":
-		return runImageTask(ctx, input)
+		result, generationErr := runImageTask(ctx, input)
+		if generationErr != nil {
+			return nil, generationErr
+		}
+		return recoverBuiltInImageResult(ctx, input.Config, result)
 	case "text":
 		if input.AgentRequests != nil {
 			input, err = resolveAgentResourcePlaceholders(input, true)
@@ -267,9 +271,17 @@ func (s *Service) processCanvasGenerationTask(ctx context.Context, userID string
 		}
 		return result, taskErr
 	case "video":
-		return runVideoTask(ctx, input)
+		result, generationErr := runVideoTask(ctx, input)
+		if generationErr != nil {
+			return nil, generationErr
+		}
+		return recoverBuiltInAVResult(ctx, input.Config, "video", result)
 	case "audio":
-		return runAudioTask(ctx, input)
+		result, generationErr := runAudioTask(ctx, input)
+		if generationErr != nil {
+			return nil, generationErr
+		}
+		return recoverBuiltInAVResult(ctx, input.Config, "audio", result)
 	default:
 		return nil, fmt.Errorf("不支持的生成模式：%s", input.Mode)
 	}

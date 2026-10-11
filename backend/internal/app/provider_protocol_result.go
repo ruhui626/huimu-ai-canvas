@@ -57,7 +57,8 @@ func finishProtocolResult(ctx context.Context, config providerConfig, mode strin
 	if len(references) == 0 {
 		return nil, errors.New("声明式协议已完成但没有返回媒体地址")
 	}
-	if output, handled, err := recoverProtocolMedia(ctx, config, mode, references); handled {
+	timing := seedAudioTimingFromUsage(config, mode, result.Usage)
+	if output, handled, err := recoverProtocolMedia(ctx, config, mode, references, timing); handled {
 		return output, err
 	}
 	items := make([]interface{}, 0, len(references))
@@ -76,6 +77,9 @@ func finishProtocolResult(ctx context.Context, config providerConfig, mode strin
 			return nil, err
 		}
 		item := map[string]interface{}{"dataUrl": dataURL(mimeType, data), "mimeType": mimeType}
+		if timing != nil {
+			item["durationMs"] = timing.DurationMs
+		}
 		items = append(items, item)
 	}
 	switch mode {
@@ -84,7 +88,11 @@ func finishProtocolResult(ctx context.Context, config providerConfig, mode strin
 	case "video":
 		return map[string]interface{}{"mode": "video", "video": items[0]}, nil
 	default:
-		return map[string]interface{}{"mode": "audio", "audio": items[0]}, nil
+		output := map[string]interface{}{"mode": "audio", "audio": items[0]}
+		if timing != nil {
+			output["seedAudioTiming"] = timing
+		}
+		return output, nil
 	}
 }
 

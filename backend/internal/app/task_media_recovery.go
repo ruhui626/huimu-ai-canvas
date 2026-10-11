@@ -21,12 +21,14 @@ import (
 
 // Recovery is keyed by the task, not a second generation or billing order.
 type mediaCheckpoint struct {
-	Mode           string                `json:"mode"`
-	Items          []mediaCheckpointItem `json:"items"`
-	StartedAt      time.Time             `json:"startedAt"`
-	Attempts       int                   `json:"attempts"`
-	ManualAttempts int                   `json:"manualAttempts"`
-	LastManualAt   time.Time             `json:"lastManualAt"`
+	LegacyAudio     *legacyAudioDelivery  `json:"legacyAudio,omitempty"`
+	SeedAudioTiming *seedAudioTiming      `json:"seedAudioTiming,omitempty"`
+	Mode            string                `json:"mode"`
+	Items           []mediaCheckpointItem `json:"items"`
+	StartedAt       time.Time             `json:"startedAt"`
+	Attempts        int                   `json:"attempts"`
+	ManualAttempts  int                   `json:"manualAttempts"`
+	LastManualAt    time.Time             `json:"lastManualAt"`
 }
 
 type mediaCheckpointItem struct {
@@ -42,6 +44,12 @@ type mediaRecoveryError struct {
 	cause     error
 }
 type mediaExecutionTaskKey struct{}
+
+// Delivery capability belongs to a running task, not a capacity reservation.
+func usesTaskMediaDelivery(ctx context.Context) bool {
+	task, ok := ctx.Value(mediaExecutionTaskKey{}).(model.Task)
+	return ok && task.ID != "" && task.Status == model.TaskStatusRunning
+}
 
 var storageCredentialAssignmentPattern = regexp.MustCompile(`(?i)(accesskeyid|accesskeysecret|awsaccesskeyid|credential|signature)([ \t]*[:=][ \t]*["']?)[^ \t\r\n,;"'<>}\]]+`)
 
@@ -159,7 +167,7 @@ func (s *Service) saveMediaCheckpoint(task *model.Task, checkpoint *mediaCheckpo
 	return s.repo.SaveTaskMediaCheckpoint(task, encoded, stage)
 }
 
-func recoverProtocolMedia(ctx context.Context, config providerConfig, mode string, references []protocol.MediaReference) (map[string]interface{}, bool, error) {
+func recoverProtocolMedia(ctx context.Context, config providerConfig, mode string, references []protocol.MediaReference, timing *seedAudioTiming) (map[string]interface{}, bool, error) {
 	metadata, ok := ctx.Value(providerAnalyticsKey{}).(providerAnalyticsContext)
 	if !ok || metadata.Service == nil || metadata.TaskID == "" {
 		return nil, false, nil
@@ -182,7 +190,22 @@ func recoverProtocolMedia(ctx context.Context, config providerConfig, mode strin
 		result, err := s.resumeTaskMedia(ctx, task)
 		return result, true, err
 	}
-	checkpoint := &mediaCheckpoint{Mode: mode, StartedAt: time.Now()}
+	checkpoint := &mediaCheckpoint{Mode: mode, StartedAt: time.Now(), SeedAudioTiming: timing}
+	if legacy, ok := ctx.Value(legacyAudioDeliveryKey{}).(legacyAudioDelivery); ok {
+		checkpoint.LegacyAudio = &legacy
+	}
+	// Until the checkpoint is durable, partial staging files have no recovery
+	// owner. Remove only this attempt's files on failure.
+	checkpointSaved := false
+	defer func() {
+		if !checkpointSaved {
+			for _, item := range checkpoint.Items {
+				if path := s.mediaTempPath(item.TempName); path != "" {
+					_ = os.Remove(path)
+				}
+			}
+		}
+	}()
 	for _, reference := range references {
 		if len(reference.URL) > 16_384 {
 			return nil, true, &mediaRecoveryError{stage: "checkpoint", cause: errors.New("上游媒体地址过长")}
@@ -190,22 +213,19 @@ func recoverProtocolMedia(ctx context.Context, config providerConfig, mode strin
 		item := mediaCheckpointItem{Reference: protocol.MediaReference{URL: reference.URL, MIMEType: reference.MIMEType}}
 		// Inline bytes are staged, never stored as a large base64 DB checkpoint.
 		if reference.DataURL != "" {
-			mimeType, data, decodeErr := decodeProviderDataURL(reference.DataURL)
-			if decodeErr != nil {
-				return nil, true, &mediaRecoveryError{stage: "checkpoint", cause: decodeErr}
-			}
 			policy, policyErr := s.RuntimePolicy()
 			if policyErr != nil {
 				return nil, true, &mediaRecoveryError{stage: "checkpoint", cause: policyErr}
 			}
-			if int64(len(data)) > min(megabytes(policy.Resource.GeneratedFileMB), mediaStagingBudget) || !strings.HasPrefix(mimeType, mode+"/") {
-				return nil, true, &mediaRecoveryError{stage: "checkpoint", cause: errors.New("生成文件类型或大小不符合限制")}
-			}
-			item.TempName, err = s.stageInlineMedia(data)
+			item.TempName, item.MIMEType, err = s.stageInlineMediaURL(reference.DataURL, mode, min(megabytes(policy.Resource.GeneratedFileMB), mediaStagingBudget))
 			if err != nil {
+				if errors.Is(err, errMediaStagingBusy) && isPublicMediaURL(reference.URL) {
+					// A durable URL can be retried without retaining the inline body.
+					checkpoint.Items = append(checkpoint.Items, item)
+					continue
+				}
 				return nil, true, &mediaRecoveryError{stage: "checkpoint", cause: err}
 			}
-			item.MIMEType = mimeType
 			item.Reference.DataURL = ""
 		}
 		checkpoint.Items = append(checkpoint.Items, item)
@@ -213,6 +233,7 @@ func recoverProtocolMedia(ctx context.Context, config providerConfig, mode strin
 	if err := s.saveMediaCheckpoint(task, checkpoint, "download"); err != nil {
 		return nil, true, &mediaRecoveryError{stage: "checkpoint", cause: err}
 	}
+	checkpointSaved = true
 	result, err := s.materializeTaskMedia(ctx, task, config, checkpoint)
 	return result, true, err
 }
@@ -234,6 +255,9 @@ func (s *Service) resumeTaskMedia(ctx context.Context, task *model.Task) (map[st
 }
 
 func (s *Service) materializeTaskMedia(ctx context.Context, task *model.Task, config providerConfig, checkpoint *mediaCheckpoint) (result map[string]interface{}, err error) {
+	if checkpoint.LegacyAudio != nil {
+		ctx = context.WithValue(ctx, legacyAudioDeliveryKey{}, *checkpoint.LegacyAudio)
+	}
 	defer func() {
 		var failure *mediaRecoveryError
 		if err != nil && !errors.As(err, &failure) {
@@ -295,7 +319,11 @@ func (s *Service) materializeTaskMedia(ctx context.Context, task *model.Task, co
 				return nil, err
 			}
 			started := time.Now()
-			resource, err = s.storeTaskMediaFile(task, index, path, item.MIMEType, checkpoint.Mode, resource)
+			storageTiming := checkpoint.SeedAudioTiming
+			if checkpoint.LegacyAudio != nil {
+				storageTiming = &seedAudioTiming{}
+			}
+			resource, err = s.storeTaskMediaFile(task, index, path, item.MIMEType, checkpoint.Mode, resource, storageTiming)
 			if err != nil {
 				var storeErr *mediaStoreError
 				if errors.As(err, &storeErr) && storeErr.stage != "" {
@@ -314,12 +342,18 @@ func (s *Service) materializeTaskMedia(ctx context.Context, task *model.Task, co
 		items = append(items, map[string]interface{}{"dataUrl": url, "url": url, "resourceId": resource.ID, "storageKey": "resource:" + resource.ID, "mimeType": resource.MimeType, "bytes": resource.Size, "width": resource.Width, "height": resource.Height, "durationMs": resource.DurationMs})
 	}
 	result = map[string]interface{}{"mode": checkpoint.Mode}
+	if checkpoint.Mode == "audio" && checkpoint.SeedAudioTiming != nil {
+		result["seedAudioTiming"] = checkpoint.SeedAudioTiming
+	}
 	if checkpoint.Mode == "image" {
 		result["images"] = items
 	} else if checkpoint.Mode == "audio" {
 		result["audios"] = items
 		// Keep the legacy singular field for clients that render one audio result.
 		result["audio"] = items[0]
+		if checkpoint.LegacyAudio != nil {
+			items[0].(map[string]interface{})["format"] = checkpoint.LegacyAudio.Format
+		}
 	} else {
 		result[checkpoint.Mode] = items[0]
 	}
@@ -356,7 +390,7 @@ func (s *Service) handleMediaRecoveryFailure(task *model.Task, cause error) erro
 		if decodeErr != nil {
 			return decodeErr
 		}
-		if errors.Is(cause, errMediaRecoveryBusy) && time.Since(checkpoint.StartedAt) < 20*time.Minute {
+		if errors.Is(cause, errMediaRecoveryBusy) || errors.Is(cause, errMediaStagingBusy) {
 			return s.repo.DeferRunningTaskForProviderPoll(task.ID, task.LeaseOwner, "作品已生成，等待保存", 5*time.Second)
 		}
 		if failure.retryable && checkpoint.Attempts < len(mediaRecoveryDelays) && time.Since(checkpoint.StartedAt) < 20*time.Minute {

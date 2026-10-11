@@ -120,6 +120,14 @@ func asyncAudioSucceeded(state map[string]interface{}) bool {
 
 func asyncAudioResult(ctx context.Context, config providerConfig, id string, state map[string]interface{}, format string) (map[string]interface{}, error) {
 	resultURL := asyncAudioResultURL(state)
+	if usesTaskMediaDelivery(ctx) && !strings.HasPrefix(resultURL, "data:") && !isPublicMediaURL(resultURL) {
+		resultURL = apiURL(config.BaseURL, "/audio/tasks/"+url.PathEscape(id)+"/content")
+	}
+	if usesTaskMediaDelivery(ctx) && isPublicMediaURL(resultURL) {
+		result := pendingLegacyMediaResult("audio", resultURL)
+		result["audio"].(map[string]interface{})["format"] = format
+		return result, nil
+	}
 	var data []byte
 	var mimeType string
 	var err error

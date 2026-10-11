@@ -8,7 +8,7 @@ import (
 	"yingce/backend/internal/repository"
 )
 
-const TaskWorkerConcurrency = 8
+const TaskWorkerConcurrency = defaultWorkerConcurrency
 
 // Host 由组合根注入，避免 platform → app 回环。
 type Host interface {

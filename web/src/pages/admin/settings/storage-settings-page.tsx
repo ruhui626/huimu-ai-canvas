@@ -12,6 +12,7 @@ import { useAppearanceStore } from "@/stores/use-appearance-store";
 import { AdminStatusBadge, configuredSecretText, SettingsSectionCard } from "../components/admin-ui";
 import { accessKeySecretLabel, formValues, formatSettingTime, hasStorageChanges, isAdminOSSSetting, normalizeStoragePayload, providerDraftValues, storageProviderLabel, storageResponseMatches, type StoragePayload, validateStorageDraft, connectionInput, storageConfigurationReady, providerGuidance, accessKeyIdLabel } from "./storage-settings-model";
 import { type OSSFormValues, type StorageMode } from "./storage-settings-model";
+import { OSSRebindRepair } from "./components/oss-rebind-repair";
 
 export { type OSSFormValues, type StorageMode, type StoragePayload } from "./storage-settings-model";
 
@@ -589,6 +590,7 @@ export default function StorageSettingsPage() {
                                 </Form.Item>
                             </div>
                         </Form>
+                        {setting.provider === "aliyun" && setting.enabled && <OSSRebindRepair disabled={dirty || saving || testing || refreshing} />}
                     </SettingsSectionCard>
                 </div>
             </div>

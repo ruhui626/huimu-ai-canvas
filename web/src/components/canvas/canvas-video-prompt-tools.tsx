@@ -5,6 +5,9 @@ import { Check, ChevronDown, Image as ImageIcon } from "lucide-react";
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import type { CanvasNodeMetadata } from "@/types/canvas";
+import type { AiConfig } from "@/stores/use-config-store";
+import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
+import { isSeedanceVideoConfig } from "@/lib/seedance-video";
 
 type VideoFrameOption = {
     nodeId: string;
@@ -20,6 +23,7 @@ type CompactMenuItem = {
 };
 
 type CanvasVideoPromptToolsProps = {
+    config?: AiConfig;
     metadata?: CanvasNodeMetadata;
     frameOptions: VideoFrameOption[];
     onMetadataChange: (patch: Partial<CanvasNodeMetadata>) => void;
@@ -33,10 +37,12 @@ const MENU_MARGIN = 8;
 const MENU_ITEM_HEIGHT = 28;
 const CONTROL_TEXT_STYLE: CSSProperties = { fontFamily: "inherit", fontSize: 11, fontWeight: 400, letterSpacing: 0, lineHeight: 1 };
 
-export function CanvasVideoPromptTools({ metadata, frameOptions, onMetadataChange, referenceMode = "frames", referenceSummary }: CanvasVideoPromptToolsProps) {
+export function CanvasVideoPromptTools({ config, metadata, frameOptions, onMetadataChange, referenceMode = "frames", referenceSummary }: CanvasVideoPromptToolsProps) {
     const theme = canvasThemes[useActiveTheme()];
     const startFrame = metadata?.videoStartFrameNodeId || EMPTY_FRAME_VALUE;
     const endFrame = metadata?.videoEndFrameNodeId || EMPTY_FRAME_VALUE;
+    const showRatioHint = Boolean(config && isSeedanceVideoConfig(config) && frameOptions.some((option) => option.nodeId === startFrame));
+    const supportsAdaptive = Boolean(config && modelCapabilityConfigFor(config, config.model || config.videoModel).video?.ratios.includes("adaptive"));
 
     const setFrame = (key: "videoStartFrameNodeId" | "videoEndFrameNodeId", value: string) => {
         const next = value === EMPTY_FRAME_VALUE ? undefined : value;
@@ -78,6 +84,12 @@ export function CanvasVideoPromptTools({ metadata, frameOptions, onMetadataChang
         >
             <FrameMenu label="首帧" value={startFrame} options={frameOptions} theme={theme} onChange={(value) => setFrame("videoStartFrameNodeId", value)} />
             <FrameMenu label="尾帧" value={endFrame} options={frameOptions} theme={theme} onChange={(value) => setFrame("videoEndFrameNodeId", value)} />
+            {showRatioHint ? <div className="col-span-2 text-[var(--fs-tiny)] leading-5" style={{ color: theme.node.muted }}>
+                {config?.size === "adaptive" ? "已设为自适应：输出比例跟随首帧图片。" : <>
+                    首帧 / 首尾帧生成请使用自适应比例，避免比例约束报错。
+                    {supportsAdaptive ? <button type="button" className="ml-1 underline underline-offset-2 focus-visible:outline" style={{ color: theme.node.text }} onClick={() => onMetadataChange({ size: "adaptive" })}>设为自适应</button> : <span>当前模型配置未启用自适应，请联系管理员核对。</span>}
+                </>}
+            </div> : null}
         </div>
     );
 }

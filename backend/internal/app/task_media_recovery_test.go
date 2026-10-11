@@ -29,7 +29,12 @@ func newMediaRecoveryTestService(t *testing.T) (*Service, *gorm.DB) {
 	if err := database.MigrateSchema(db); err != nil {
 		t.Fatal(err)
 	}
-	return &Service{repo: repository.New(db), dataDir: t.TempDir(), activeCancels: make(map[string]context.CancelFunc)}, db
+	dir := t.TempDir()
+	// These tests exercise delivery, not platform-specific key creation/fsync.
+	if err := os.WriteFile(filepath.Join(dir, ".settings-key"), make([]byte, 32), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return &Service{repo: repository.New(db), dataDir: dir, activeCancels: make(map[string]context.CancelFunc)}, db
 }
 
 func mediaTestPNG(t *testing.T) []byte {
@@ -75,7 +80,7 @@ func TestMediaRecoveryDownloadFailureResumesSameTaskAfterRestart(t *testing.T) {
 	config := providerConfig{BaseURL: server.URL}
 	task := seedMediaTask(t, db, config)
 	ctx := context.WithValue(withProviderAnalytics(context.Background(), s, *task), mediaExecutionTaskKey{}, *task)
-	_, handled, failure := recoverProtocolMedia(ctx, config, "image", []protocol.MediaReference{{URL: server.URL + "/result?token=private-test-token"}})
+	_, handled, failure := recoverProtocolMedia(ctx, config, "image", []protocol.MediaReference{{URL: server.URL + "/result?token=private-test-token"}}, nil)
 	if !handled || failure == nil {
 		t.Fatalf("handled=%v failure=%v", handled, failure)
 	}
@@ -458,7 +463,7 @@ func TestMediaRecoveryAudioKeepsAllReturnedResults(t *testing.T) {
 	result, handled, recoveryErr := recoverProtocolMedia(ctx, providerConfig{BaseURL: server.URL}, "audio", []protocol.MediaReference{
 		{URL: server.URL + "/voice.wav", MIMEType: "audio/mpeg"},
 		{URL: server.URL + "/emotion.wav", MIMEType: "audio/mpeg"},
-	})
+	}, nil)
 	if !handled || recoveryErr != nil {
 		t.Fatalf("handled=%v err=%v", handled, recoveryErr)
 	}

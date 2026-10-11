@@ -24,7 +24,7 @@ type localRateEntry struct {
 const (
 	MinChannelConcurrencyLimit     = 1
 	MaxChannelConcurrencyLimit     = maxRuntimeConcurrency
-	defaultChannelConcurrencyValue = 8
+	defaultChannelConcurrencyValue = defaultChannelConcurrency
 )
 
 type channelSlotError struct {

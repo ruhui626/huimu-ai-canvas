@@ -15,8 +15,10 @@ func TestStorageConnectionTestRoutesAreRegistered(t *testing.T) {
 	RegisterAdminRoutes(group, &service.Service{})
 	RegisterUserDataRoutes(group, &service.Service{})
 	wanted := map[string]bool{
-		"POST /api/admin/settings/oss/test": false,
-		"POST /api/settings/oss/test":       false,
+		"POST /api/admin/settings/oss/rebind/check": false,
+		"POST /api/admin/settings/oss/rebind/apply": false,
+		"POST /api/admin/settings/oss/test":         false,
+		"POST /api/settings/oss/test":               false,
 	}
 	for _, route := range router.Routes() {
 		key := route.Method + " " + route.Path

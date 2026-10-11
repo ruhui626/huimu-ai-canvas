@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -21,8 +22,9 @@ import (
 	"yingce/backend/internal/model"
 )
 
-const mediaStagingBudget int64 = 512 << 20
-const mediaStagingTTL = 24 * time.Hour
+const mediaStagingBudget int64 = 2 << 30 // 2 GiB shared by staged media results.
+
+var errMediaStagingBusy = errors.New("作品暂存空间不足，请稍后重试保存")
 
 var mediaStagingMu sync.Mutex
 
@@ -59,20 +61,22 @@ func (s *Service) newMediaTemp(limit int64) (*os.File, error) {
 		if !strings.HasPrefix(entry.Name(), "result-") || !entry.Type().IsRegular() {
 			continue
 		}
+		// Withdrawn admission markers contain no media. They must not keep
+		// consuming the delivery budget after upgrading from that version.
+		if strings.HasPrefix(entry.Name(), "result-reservation-") {
+			continue
+		}
 		info, err := entry.Info()
 		if err != nil {
 			return nil, err
 		}
-		if time.Since(info.ModTime()) > mediaStagingTTL {
-			if err := os.Remove(filepath.Join(dir, entry.Name())); err != nil {
-				return nil, err
-			}
-			continue
-		}
 		used += info.Size()
 	}
-	if limit <= 0 || limit > mediaStagingBudget || used > mediaStagingBudget-limit {
-		return nil, errors.New("作品暂存空间不足，请稍后重试保存")
+	if limit <= 0 || limit > mediaStagingBudget {
+		return nil, errors.New("生成文件超过暂存大小限制")
+	}
+	if used > mediaStagingBudget-limit {
+		return nil, errMediaStagingBusy
 	}
 	file, err := os.CreateTemp(dir, "result-*")
 	if err != nil {
@@ -107,6 +111,60 @@ func (s *Service) stageInlineMedia(data []byte) (string, error) {
 		return "", err
 	}
 	return filepath.Base(file.Name()), nil
+}
+
+// Decode directly to a bounded file instead of keeping a second full media
+// buffer next to the provider's base64 response in memory.
+func (s *Service) stageInlineMediaURL(value, mode string, limit int64) (name, mimeType string, err error) {
+	header, encoded, ok := strings.Cut(value, ",")
+	if !ok || !strings.HasPrefix(header, "data:") || !strings.HasSuffix(strings.ToLower(header), ";base64") {
+		return "", "", errors.New("data URL 格式无效")
+	}
+	mimeType = header[len("data:") : len(header)-len(";base64")]
+	if !strings.HasPrefix(mimeType, mode+"/") {
+		return "", "", errors.New("生成文件类型不符合限制")
+	}
+	// Ignore CR/LF, which the standard base64 decoder also accepts.
+	encodedSize := int64(len(encoded) - strings.Count(encoded, "\r") - strings.Count(encoded, "\n"))
+	decodedSize := encodedSize / 4 * 3
+	for i, padding := len(encoded)-1, 0; i >= 0 && padding < 2; i-- {
+		if encoded[i] == '\r' || encoded[i] == '\n' {
+			continue
+		}
+		if encoded[i] != '=' {
+			break
+		}
+		decodedSize--
+		padding++
+	}
+	if encodedSize == 0 || encodedSize%4 != 0 || decodedSize <= 0 || decodedSize > limit {
+		return "", "", errors.New("生成文件为空、编码无效或超过大小限制")
+	}
+	file, err := s.newMediaTemp(decodedSize)
+
+	if err != nil {
+		return "", "", err
+	}
+	defer func() {
+		_ = file.Close()
+		if err != nil {
+			_ = os.Remove(file.Name())
+		}
+	}()
+	size, err := io.Copy(file, io.LimitReader(base64.NewDecoder(base64.StdEncoding, strings.NewReader(encoded)), decodedSize+1))
+	if err != nil {
+		return "", "", err
+	}
+	if size != decodedSize {
+		return "", "", errors.New("生成文件编码长度不一致")
+	}
+	if err = file.Sync(); err != nil {
+		return "", "", err
+	}
+	if err = file.Close(); err != nil {
+		return "", "", err
+	}
+	return filepath.Base(file.Name()), mimeType, nil
 }
 
 func (s *Service) downloadTaskMedia(ctx context.Context, config providerConfig, url, mode string) (name, mimeType string, err error) {
@@ -191,6 +249,12 @@ func (s *Service) downloadTaskMedia(ctx context.Context, config providerConfig, 
 		return "", "", err
 	}
 	mimeType = normalizedMediaMimeType(response.Header.Get("Content-Type"), head)
+	if legacy, ok := ctx.Value(legacyAudioDeliveryKey{}).(legacyAudioDelivery); ok && mode == "audio" {
+		mimeType, err = validateGeneratedAudio(response.Header.Get("Content-Type"), head, legacy.Format)
+		if err != nil {
+			return "", "", err
+		}
+	}
 	if mode == "audio" && mimeType == "application/ogg" {
 		mimeType = "audio/ogg"
 	}
@@ -212,7 +276,7 @@ func mediaUploadKey(taskID string, index int) *string {
 	return &key
 }
 
-func (s *Service) storeTaskMediaFile(task *model.Task, index int, path, mimeType, kind string, existing *model.Resource) (*model.Resource, error) {
+func (s *Service) storeTaskMediaFile(task *model.Task, index int, path, mimeType, kind string, existing *model.Resource, timing *seedAudioTiming) (*model.Resource, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return nil, mediaStoreFailure("local_save", err)
@@ -256,7 +320,11 @@ func (s *Service) storeTaskMediaFile(task *model.Task, index int, path, mimeType
 		// Audio duration is the source of truth for per-second settlement. The
 		// media can still be saved when ffprobe is unavailable; settlement then
 		// moves the order to review instead of silently charging a fake length.
-		durationMs = probeMediaDurationMs(path)
+		if timing != nil {
+			durationMs = timing.DurationMs
+		} else {
+			durationMs = probeMediaDurationMs(path)
+		}
 	}
 	day, err := s.reserveGeneratedResourceQuota(task.UserID, info.Size())
 	if err != nil {

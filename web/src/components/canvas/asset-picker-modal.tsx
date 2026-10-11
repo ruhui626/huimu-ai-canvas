@@ -64,6 +64,7 @@ export function AssetPickerModal({ open, multiple = true, onInsert, onClose }: P
 
     return (
         <AssetLibraryPickerModal
+            title="我的素材库"
             remoteLibrary
             allowCharacters
             acceptRemoteItems

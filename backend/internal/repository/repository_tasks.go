@@ -56,6 +56,7 @@ func (r *Repository) ClaimNextTask(owner string, leaseDuration time.Duration) (*
 	leaseExpiresAt := now.Add(leaseDuration)
 	err := r.db.Transaction(func(tx *gorm.DB) error {
 		query := tx.Where("(status = ? OR (status = ? AND (lease_expires_at IS NULL OR lease_expires_at <= ?))) AND (next_poll_at IS NULL OR next_poll_at <= ?)", model.TaskStatusQueued, model.TaskStatusRunning, now, now).
+			Order("CASE WHEN media_recovery_json IS NOT NULL AND media_recovery_json <> '' THEN 0 ELSE 1 END").
 			Order("created_at asc").Limit(1)
 		if r.Dialect() == "postgres" {
 			query = query.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"})
@@ -122,12 +123,13 @@ func (r *Repository) UpdateTaskProviderState(id string, providerRequestID string
 
 func (r *Repository) DeferRunningTaskForProviderPoll(id string, owner string, stage string, delay time.Duration) error {
 	now := time.Now()
+	updates := map[string]any{
+		"stage": stage, "error": "", "completed_at": nil, "next_poll_at": now.Add(delay),
+		"lease_owner": "", "lease_expires_at": nil, "updated_at": now,
+	}
 	result := taskLeaseWriter(r.db.Model(&model.Task{}), owner).
 		Where("id = ? AND status = ?", id, model.TaskStatusRunning).
-		Updates(map[string]any{
-			"stage": stage, "error": "", "completed_at": nil, "next_poll_at": now.Add(delay),
-			"lease_owner": "", "lease_expires_at": nil, "updated_at": now,
-		})
+		Updates(updates)
 	if result.Error != nil {
 		return result.Error
 	}

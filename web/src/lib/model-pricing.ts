@@ -74,6 +74,12 @@ export function formatPriceRange(values: number[], suffix: string) {
     return unique.length === 1 ? `${format(unique[0])} ${suffix}` : `${format(unique[0])}-${format(unique[unique.length - 1])} ${suffix}`;
 }
 
+// 仅用于生成入口的紧凑展示；计价值和详细费用说明保留原始精度。
+export function formatGenerationCredits(credits: number) {
+    if (credits > 0 && credits < 0.01) return "<0.01";
+    return credits.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+}
+
 export function modelQuoteDescription(quote: LogicalModelQuote) {
     const amount = (quote.amountMicrocredits / 1_000_000).toLocaleString("zh-CN", { maximumFractionDigits: 6 });
     const descriptions = [`${quote.estimated ? "预计" : "本次"}消耗 ${amount} 积分`];

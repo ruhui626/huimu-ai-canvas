@@ -4,13 +4,13 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerE
 import { ArrowUp, ChevronDown, FileText, ImagePlus, LayoutList, LoaderCircle, Maximize2, Music2, SlidersHorizontal, Video, WandSparkles, X } from "lucide-react";
 
 import { ModelPicker } from "@/components/model-picker";
-import { doubaoAudioReferenceHint, isDoubaoAudioConfig } from "@/lib/audio-generation";
+import { doubaoAudioReferenceHint, isDoubaoAudioConfig, normalizeAudioFormatForConfig } from "@/lib/audio-generation";
 import { modelOptionName, resolveModelChannel, useEffectiveConfig } from "@/stores/use-config-store";
 import { canonicalGenerationMetadata, nodeGenerationPrompt } from "@/lib/canvas/generation-contract";
 import { PROMPT_EDITOR_VIEWPORT_MARGIN } from "@/lib/canvas/canvas-prompt-editor-size";
 import { CreditSymbol, requestCreditCost } from "@/constant/credits";
 import { canvasThemes } from "@/lib/canvas-theme";
-import { modelQuoteDescription, modelQuoteRequest } from "@/lib/model-pricing";
+import { formatGenerationCredits, modelQuoteDescription, modelQuoteRequest } from "@/lib/model-pricing";
 import { modelRequestOptions, defaultImageParamsForModel, type ModelRequirements } from "@/lib/model-selection";
 import { navigateToSettings } from "@/lib/settings-navigation";
 import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
@@ -391,7 +391,8 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
 
     const renderSubmitButton = (expanded: boolean) => {
         const showCost = creditsEnabled && credits !== null;
-        const formattedCredits = credits?.toLocaleString("zh-CN", { maximumFractionDigits: 6 });
+        const formattedCredits = credits == null ? undefined : formatGenerationCredits(credits);
+        const detailedCost = credits == null ? "生成" : `消耗 ${credits.toLocaleString("zh-CN", { maximumFractionDigits: 6 })} 积分，生成`;
         const actionLabel = isRunning ? "生成中" : showCost ? `${routeQuote?.estimated ? "预估" : "消耗"} ${formattedCredits} 积分，生成` : "生成";
         return (
             <Button
@@ -407,12 +408,12 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                 }
                 onClick={() => (expanded ? submitExpandedPrompt() : submit())}
                 aria-label={actionLabel}
-                title={routeQuote ? modelQuoteDescription(routeQuote) : actionLabel}
+                title={routeQuote ? modelQuoteDescription(routeQuote) : showCost && !isRunning ? detailedCost : actionLabel}
             >
                 {showCost ? (
                     <span className="canvas-node-composer-submit-cost">
                         <CreditSymbol />
-                        <span>{routeQuote?.estimated ? `预估:${formattedCredits}` : formattedCredits}</span>
+                        <span>{routeQuote?.estimated ? `预估 ${formattedCredits}` : formattedCredits}</span>
                     </span>
                 ) : null}
                 <span className="canvas-node-composer-submit-action" aria-hidden>
@@ -447,6 +448,10 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                         config={config}
                         value={config.model}
                         onChange={(model) => {
+                            if (mode === "audio") {
+                                if (model === config.model) return;
+                                return onConfigChange(node.id, { model, audioFormat: normalizeAudioFormatForConfig({ ...config, model }, "") });
+                            }
                             if (mode !== "image") return onConfigChange(node.id, { model });
                             const { count, ...params } = defaultImageParamsForModel(config, model);
                             onConfigChange(node.id, { model, ...params, count: Number(count) });
@@ -512,7 +517,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                             config={config}
                             buttonClassName="canvas-node-composer-settings-trigger [&>span]:min-w-0 [&_.lucide]:!size-3"
                             onConfigChange={(key, value) => onConfigChange(node.id, audioConfigPatch(key, value))}
-                            onReset={() => onConfigChange(node.id, { audioVoice: "", audioFormat: "wav", audioSpeed: "1", audioSampleRate: "24000", audioPitch: "0", audioVolume: "1" })}
+                            onReset={() => onConfigChange(node.id, { audioVoice: "", audioFormat: normalizeAudioFormatForConfig(config, ""), audioSpeed: "1", audioSampleRate: "24000", audioPitch: "0", audioVolume: "1" })}
                         />
                     ) : null}
                     {renderSubmitButton(expanded)}
@@ -607,7 +612,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                     </button>
                     {paramsExpanded ? (
                         <div className="pt-1">
-                            <CanvasVideoPromptTools metadata={node.metadata} frameOptions={videoFrameOptions} onMetadataChange={(patch) => onConfigChange(node.id, patch)} />
+                            <CanvasVideoPromptTools config={config} metadata={node.metadata} frameOptions={videoFrameOptions} onMetadataChange={(patch) => onConfigChange(node.id, patch)} />
                         </div>
                     ) : null}
                 </div>
@@ -640,7 +645,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                         {renderPromptEditor(true, Boolean(expandedModalSize))}
                         {hasVideoPromptTools ? (
                             <div className="canvas-node-composer-parameters shrink-0">
-                                <CanvasVideoPromptTools metadata={node.metadata} frameOptions={videoFrameOptions} onMetadataChange={(patch) => onConfigChange(node.id, patch)} />
+                                <CanvasVideoPromptTools config={config} metadata={node.metadata} frameOptions={videoFrameOptions} onMetadataChange={(patch) => onConfigChange(node.id, patch)} />
                             </div>
                         ) : null}
                         <div className="shrink-0">{renderComposerControls(true)}</div>

@@ -417,11 +417,12 @@ add({
   response: { status: "succeeded", images: ref("response.data"), usage: ref("response.usage"), errorPaths: ["error.code"], messagePaths: ["error.message"] }
 });
 
+const arkSeedanceMediaCombinationValidation = { assert: { $or: [eq(len(ref("request.audios")), 0), gt({ $add: [len(ref("request.images")), len(ref("request.videos"))] }, 0)] }, message: "Seedance 不支持纯音频或文本+音频，请同时添加参考图片或参考视频" };
 const arkSeedanceValidations = [
   { assert: { $lte: [len(ref("request.images")), 9] }, message: "Seedance 最多支持 9 张参考图片" },
   { assert: { $lte: [len(ref("request.videos")), 3] }, message: "Seedance 最多支持 3 个参考视频" },
   { assert: { $lte: [len(ref("request.audios")), 3] }, message: "Seedance 最多支持 3 个参考音频" },
-  { assert: { $or: [eq(len(ref("request.audios")), 0), gt({ $add: [len(ref("request.images")), len(ref("request.videos"))] }, 0)] }, message: "Seedance 不支持纯音频或文本+音频，请同时添加参考图片或参考视频" }
+  arkSeedanceMediaCombinationValidation
 ];
 
 const arkSeedanceParams = [
@@ -481,10 +482,10 @@ const arkSeedanceResponse = {
 };
 
 add({
-  id: "volcengine-ark-seedance", providerId: "volcengine-ark-video", name: "Volcengine Ark Seedance", vendor: "Volcengine", capability: "video", version: "2.0.1",
+  id: "volcengine-ark-seedance", providerId: "volcengine-ark-video", name: "Volcengine Ark Seedance", vendor: "Volcengine", capability: "video", version: "2.0.2",
   baseUrl: "https://ark.cn-beijing.volces.com/api/v3", auth: bearer, params: arkSeedanceParams, requiresPublicMediaUrls: true,
-  validations: arkSeedanceValidations,
-  notes: "官方 Ark 推理接入：创建/查询/取消路径相对于渠道 Base URL，保留 Base URL 中的 /api/v3、/v1 等路径前缀；插件不根据图片下标推断首尾帧，role 由业务层确定。API Key 来自方舟推理接入控制台。",
+  validations: [arkSeedanceMediaCombinationValidation],
+  notes: "官方 Ark 推理接入：创建/查询/取消路径相对于渠道 Base URL，保留 Base URL 中的 /api/v3、/v1 等路径前缀；插件不根据图片下标推断首尾帧，role 由业务层确定。图片、视频、音频数量上限由后台当前模型能力配置的 maxImages、maxVideos、maxAudios 校验，插件不再固定为 9/3/3；管理员需按实际上游能力配置，不代表上游无限制。保留音频必须同时有图片或视频的组合校验。API Key 来自方舟推理接入控制台。",
   create: jsonCreate("/contents/generations/tasks", arkSeedanceBody("volcengine-ark-video")),
   poll: { method: "GET", path: "/contents/generations/tasks/{{taskId}}" },
   cancel: { method: "DELETE", path: "/contents/generations/tasks/{{taskId}}" },
@@ -578,7 +579,7 @@ add({
 
 add({
   id: "doubao-streaming-tts", providerId: "doubao-streaming-tts", name: "豆包音频生成", vendor: "Volcengine", capability: "audio",
-  version: "2.0.1",
+  version: "2.0.2",
   validations: [
     { assert: lte(len(ref("request.prompt")), 3000), message: "豆包音频提示词（含引用文本）最多 3000 字符" },
     { assert: lte(len(ref("request.images")), 1), message: "豆包音频最多使用 1 张参考图片" },
@@ -641,7 +642,8 @@ add({
         dataUrl: ref("response.audio"),
         mimeType: conditional(eq(ref("request.extra.audioFormat"), "wav"), "audio/wav", conditional(eq(ref("request.extra.audioFormat"), "pcm"), "audio/pcm", conditional(eq(ref("request.extra.audioFormat"), "ogg_opus"), "audio/ogg", "audio/mpeg")))
       })
-    )
+    ),
+    usage: { duration: ref("response.duration"), original_duration: ref("response.original_duration") }
   }
 });
 

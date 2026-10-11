@@ -1,4 +1,5 @@
 import { type GenerationTask } from "@/services/api/task-center";
+import { normalizeImageGenerationCount } from "@/lib/image-generation-count";
 import { backendProviderConfig, logicalModelIDForConfig, runBackendGenerationTask, type GenerationTaskDependencies } from "@/services/api/generation-task";
 import { configuredModelMatchesCapability, defaultConfig, normalizeModelOptionValue, normalizeRunningHubCapability, resolveModelRequestConfig, type AiConfig, type WorkflowFieldMapping } from "@/stores/use-config-store";
 import { resolveImageUrl, uploadImage } from "@/services/image-storage";
@@ -400,7 +401,7 @@ export async function hydrateAssistantImages(sessions: CanvasAssistantSession[])
 }
 
 export function getGenerationCount(count: string) {
-    return Math.max(1, Math.min(15, Math.floor(Math.abs(Number(count)) || 1)));
+    return normalizeImageGenerationCount(count);
 }
 
 export function generationWorkflowMetadata(config: AiConfig): Pick<CanvasNodeMetadata, "workflowProvider" | "runningHubWorkflowId" | "runningHubWorkflowKind"> {

@@ -84,7 +84,7 @@
 
 ## 兼容边界
 
-官方 Ark 推理接入：创建/查询/取消路径相对于渠道 Base URL，保留 Base URL 中的 /api/v3、/v1 等路径前缀；插件不根据图片下标推断首尾帧，role 由业务层确定。API Key 来自方舟推理接入控制台。
+官方 Ark 推理接入：创建/查询/取消路径相对于渠道 Base URL，保留 Base URL 中的 /api/v3、/v1 等路径前缀；插件不根据图片下标推断首尾帧，role 由业务层确定。图片、视频、音频数量上限由后台当前模型能力配置的 maxImages、maxVideos、maxAudios 校验，插件不再固定为 9/3/3；管理员需按实际上游能力配置，不代表上游无限制。保留音频必须同时有图片或视频的组合校验。API Key 来自方舟推理接入控制台。
 
 <!-- YINGCE_MANIFEST_CONTRACT_START -->
 ## Manifest 完整接口定义
@@ -96,7 +96,7 @@
   "apiVersion": "yingce.plugin/v2",
   "id": "volcengine-ark-seedance",
   "name": "Volcengine Ark Seedance",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "author": "Volcengine / 绘幕",
   "description": "Volcengine Ark Seedance 独立请求协议插件。",
   "documentation": "<当前插件的完整 documentation，由 README.md 与 docs/interface.md 拼接而成；为避免 JSON 递归，此处不重复展开正文。>",
@@ -222,45 +222,6 @@
           }
         ],
         "validations": [
-          {
-            "assert": {
-              "$lte": [
-                {
-                  "$len": {
-                    "$ref": "request.images"
-                  }
-                },
-                9
-              ]
-            },
-            "message": "Seedance 最多支持 9 张参考图片"
-          },
-          {
-            "assert": {
-              "$lte": [
-                {
-                  "$len": {
-                    "$ref": "request.videos"
-                  }
-                },
-                3
-              ]
-            },
-            "message": "Seedance 最多支持 3 个参考视频"
-          },
-          {
-            "assert": {
-              "$lte": [
-                {
-                  "$len": {
-                    "$ref": "request.audios"
-                  }
-                },
-                3
-              ]
-            },
-            "message": "Seedance 最多支持 3 个参考音频"
-          },
           {
             "assert": {
               "$or": [

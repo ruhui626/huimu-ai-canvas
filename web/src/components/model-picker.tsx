@@ -4,7 +4,7 @@ import { Popover } from "antd";
 
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { modelCapabilityConfigFor, videoDurationOptions } from "@/lib/model-capabilities";
-import { formatPriceRange, modelQuoteDescription, modelQuoteRequest, normalizeTierResolution, priceTierSummaryLabel, priceTiersForCurrentSelection } from "@/lib/model-pricing";
+import { formatGenerationCredits, formatPriceRange, modelQuoteDescription, modelQuoteRequest, normalizeTierResolution, priceTierSummaryLabel, priceTiersForCurrentSelection } from "@/lib/model-pricing";
 import { compatibleModelInGroup, configuredModelDisplayName, modelCompatibilityError, resolveCompatibleModel, type ModelRequirements } from "@/lib/model-selection";
 import { groupModelsForPicker, isDirectSystemModel, modelChannelLabel } from "@/lib/model-picker-groups";
 import { cn } from "@/lib/utils";
@@ -497,10 +497,10 @@ function tierSpecificationLabel(tier: NonNullable<NonNullable<AiConfig["channels
 
 function ModelPrice({ price, quote, compact = false }: { price: ModelMenuPrice | null | undefined; quote?: LogicalModelQuote; compact?: boolean }) {
     if (quote) {
-        const amount = (quote.amountMicrocredits / 1_000_000).toLocaleString("zh-CN", { maximumFractionDigits: 6 });
-        const label = quote.estimated ? `预估:${amount}` : `${amount}`;
+        const amount = formatGenerationCredits(quote.amountMicrocredits / 1_000_000);
+        const label = quote.estimated ? `预估 ${amount}` : amount;
         return (
-            <span className="model-picker-price inline-flex shrink-0 items-center gap-1 text-[var(--fs-tiny)] font-bold tabular-nums" aria-label={modelQuoteDescription(quote)}>
+            <span className="model-picker-price inline-flex shrink-0 items-center gap-1 text-[var(--fs-tiny)] font-bold tabular-nums" aria-label={modelQuoteDescription(quote)} title={modelQuoteDescription(quote)}>
                 <Coins className="model-picker-price-icon" aria-hidden="true" />
                 {compact ? label : `${label} 积分`}
             </span>

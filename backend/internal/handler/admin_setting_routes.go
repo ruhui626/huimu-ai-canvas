@@ -13,6 +13,7 @@ import (
 )
 
 func registerAdminSettingRoutes(r *gin.RouterGroup, svc *service.Service) {
+	registerOSSRebindRoutes(r, svc)
 	r.GET("/admin/settings/oss", func(c *gin.Context) {
 		user, err := currentUser(c, svc)
 		if err != nil {

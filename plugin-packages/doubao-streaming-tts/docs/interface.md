@@ -60,6 +60,8 @@
 | `response.status` | `"succeeded"` |
 | `response.resultKind` | `"audio"` |
 | `response.audios` | `{"$if":{"condition":{"$ref":"response.url"},"then":{"url":{"$ref":"response.url"},"ephemeral":true},"else":{"$if":{"condition":{"$ref":"response.audio"},"then":{"dataUrl":{"$ref":"response.audio"},"mimeType":{"$if":{"condition":{"$eq":[{"$ref":"request.extra.audioFormat"},"wav"]},"then":"audio/wav","else":{"$if":{"condition":{"$eq":[{"$ref":"request.extra.audioFormat"},"pcm"]},"then":"audio/pcm","else":{"$if":{"condition":{"$eq":[{"$ref":"request.extra.audioFormat"},"ogg_opus"]},"then":"audio/ogg","else":"audio/mpeg"}}}}}}},"else":null}}}}` |
+| `response.usage.duration` | `{"$ref":"response.duration"}` |
+| `response.usage.original_duration` | `{"$ref":"response.original_duration"}` |
 
 ## 响应与错误
 
@@ -79,7 +81,7 @@
   "apiVersion": "yingce.plugin/v2",
   "id": "doubao-streaming-tts",
   "name": "豆包音频生成",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "author": "Volcengine / 绘幕",
   "description": "豆包音频生成 独立请求协议插件。",
   "documentation": "<当前插件的完整 documentation，由 README.md 与 docs/interface.md 拼接而成；为避免 JSON 递归，此处不重复展开正文。>",
@@ -734,6 +736,14 @@
                   "else": null
                 }
               }
+            }
+          },
+          "usage": {
+            "duration": {
+              "$ref": "response.duration"
+            },
+            "original_duration": {
+              "$ref": "response.original_duration"
             }
           }
         }

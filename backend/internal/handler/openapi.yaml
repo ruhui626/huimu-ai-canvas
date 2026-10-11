@@ -27,6 +27,49 @@ tags:
   - name: admin
   - name: skills
 paths:
+  /admin/settings/oss/rebind/check:
+    post:
+      tags: [admin]
+      summary: 临时检查历史平台 OSS 换桶绑定
+      description: 仅管理员。目标读取已保存配置；只做 HEAD 和大小检查，不写资源。不支持个人存储、衍生文件或在线并发迁移。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fromBucket]
+              properties:
+                fromBucket: {type: string}
+      responses:
+        "200": {description: 成功信封 data 含 fromBucket、toBucket、resources、checked、applied=false 和 checkToken 检查快照}
+        "400": {description: 配置、资源或文件检查失败}
+        "401": {description: 未登录}
+        "403": {description: 非管理员}
+        "429": {description: 请求过于频繁}
+  /admin/settings/oss/rebind/apply:
+    post:
+      tags: [admin]
+      summary: 临时修复历史平台 OSS 桶绑定
+      description: 仅管理员。需备份和单实例维护窗口确认。重新核对快照及文件，事务更新绑定；失败整批回滚。不自动备份或暂停任务。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fromBucket, checkToken, backupConfirmed, maintenanceConfirmed]
+              properties:
+                fromBucket: {type: string}
+                checkToken: {type: string}
+                backupConfirmed: {type: boolean, enum: [true]}
+                maintenanceConfirmed: {type: boolean, enum: [true]}
+      responses:
+        "200": {description: 成功信封 data 含 fromBucket、toBucket、resources、checked、applied 和 checkToken；请求中断须先重新检查确认结果}
+        "400": {description: 缺少确认、快照过期或资源检查失败}
+        "401": {description: 未登录}
+        "403": {description: 非管理员}
+        "429": {description: 请求过于频繁}
   /admin/settings/appearance/live2d:
     post:
       tags: [admin]

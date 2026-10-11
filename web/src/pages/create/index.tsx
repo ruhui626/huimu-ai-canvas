@@ -726,7 +726,7 @@ export default function CreatePage() {
                 if (!result.text?.trim()) throw new Error("后端任务没有返回文本");
                 updateOriginAssistant((item) => ({ ...item, content: result.text || "", reasoning: result.reasoning }));
             } else if (mode === "image") {
-                const taskCount = Math.max(1, Math.min(imageProfile.maxOutputs, Math.floor(Number(count) || 1)));
+                const taskCount = Number(normalizedImage!.count);
                 const settled = await runtime.runGenerationOperationOnce(retryContext?.clientOperationId, () => runtime.runBackendGenerationTaskBatch({
                     mode: "image",
                     prompt: expandedPrompt,

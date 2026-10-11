@@ -333,6 +333,7 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
             anchor={menuAnchor}
             connectedReferences={onSelectReference ? mentionCanvasReferences : activeMentionCanvasReferences}
             assetReferences={assetReferences}
+            enableSourceScopes={includeAssetLibrary}
             filteredReferences={candidates}
             query={mention.query}
             cursorOffset={mention.end}

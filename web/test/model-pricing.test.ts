@@ -1,12 +1,22 @@
 import { describe, expect, test } from "bun:test";
 
-import { modelQuoteRequest, normalizeTierResolution, priceTierSummaryLabel, priceTiersForCurrentSelection, requestCreditCost } from "../src/lib/model-pricing";
+import { formatGenerationCredits, modelQuoteRequest, normalizeTierResolution, priceTierSummaryLabel, priceTiersForCurrentSelection, requestCreditCost } from "../src/lib/model-pricing";
 import type { ModelRequirements } from "../src/lib/model-selection";
 import { createModelChannel, defaultConfig, normalizeConfigSnapshot, resolveModelChannel, type AiConfig } from "../src/stores/use-config-store";
 import { buildNodeConfig } from "../src/components/canvas/canvas-node-prompt-panel";
 import { buildGenerationConfig } from "../src/lib/canvas/canvas-project-generation";
 import { modelRequestOptions } from "../src/lib/model-selection";
 import { CanvasNodeType, type CanvasNodeData } from "../src/types/canvas";
+
+test("generation credit labels are compact without showing small positive costs as free", () => {
+    expect(formatGenerationCredits(129.92952)).toBe("129.93");
+    expect(formatGenerationCredits(1.2)).toBe("1.2");
+    expect(formatGenerationCredits(2)).toBe("2");
+    expect(formatGenerationCredits(0)).toBe("0");
+    expect(formatGenerationCredits(0.000001)).toBe("<0.01");
+    expect(formatGenerationCredits(0.009999)).toBe("<0.01");
+    expect(formatGenerationCredits(0.01)).toBe("0.01");
+});
 
 function systemConfig(input: { capability?: "image" | "video"; logicalModelId?: string; tiers: Array<{ selector: Record<string, string>; billingMode: "fixed_request" | "per_second" | "token"; unitPriceMicrocredits: number; outputTokenPriceMicrocredits?: number }> }) {
     const capability = input.capability || "video";

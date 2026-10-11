@@ -27,6 +27,24 @@ const config = (protocol: string) =>
         channels: [{ models: ["index-tts"], modelCosts: [], interfaceType: protocol, baseUrl: "", apiKey: "" }],
     }) as any;
 
+test("音频模型切换的默认格式不继承全局 MP3，手动格式仍可保留", () => {
+    const base = {
+        ...defaultConfig,
+        provider: "custom" as const,
+        model: "mini",
+        audioModel: "mini",
+        audioFormat: "mp3",
+        channels: [
+            { models: ["mini"], modelCosts: [], interfaceType: "minimax-speech", baseUrl: "", apiKey: "" },
+            { models: ["seed"], modelCosts: [], interfaceType: "doubao-streaming-tts", baseUrl: "", apiKey: "" },
+        ],
+    } as any;
+    const switched = { ...base, model: "seed" };
+    expect(normalizeAudioFormatForConfig(switched, "")).toBe("wav");
+    expect(normalizeAudioFormatForConfig(base, "")).toBe("mp3");
+    expect(normalizeAudioFormatForConfig(switched, "mp3")).toBe("mp3");
+});
+
 test("豆包高级参数仅发送到豆包，切换模型保留合法语速", () => {
     const values = { ...defaultConfig, ...config("doubao-streaming-tts"), audioSpeed: "1.25", audioPitch: "-3", audioVolume: "1.5", audioSampleRate: "24000" };
     expect(doubaoAudioOptions(values)).toEqual({ sample_rate: 24000, pitch_rate: -3, loudness_rate: 50 });

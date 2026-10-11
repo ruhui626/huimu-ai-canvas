@@ -3,6 +3,7 @@ import type { ImageResolutionOption, ImageResolutionTier } from "@/lib/image-res
 import { imagePresetForRatio } from "./image-size-presets";
 import { type WorkflowVideoFieldLike, workflowImageCapabilityConfig, workflowVideoCapabilityConfig } from "./model-capabilities-workflow";
 import { resolveWorkflowVideoScreenSpec } from "./video-screen-specs";
+import { normalizeImageGenerationCount } from "./image-generation-count";
 
 export { workflowFieldChoiceValues, workflowFieldConfigurationError, workflowFieldCurrentValue, workflowFieldHasStoredValue, workflowFieldKey, workflowFieldNumberBounds, workflowFieldPresetOptions, workflowFieldRandomKey, workflowFieldRole, workflowFieldSafeToOverride, workflowFieldSource, workflowFieldSubmissionValue, workflowFieldValueError, workflowImageCapabilityConfig, workflowOutputSizeValue, workflowParameterFields, workflowVideoCapabilityConfig, workflowVideoDefaultSize, workflowVideoFieldsFromJson, type WorkflowFieldNumberBounds, type WorkflowVideoFieldLike } from "./model-capabilities-workflow";
 
@@ -496,7 +497,7 @@ export function normalizeImageValue(profile: ImageCapabilityConfig, value: { siz
         : requestedQuality === "1k" || requestedQuality === "2k" || requestedQuality === "4k"
             ? requestedQuality
             : presetTier || profile.quality.default || "auto";
-    const count = String(Math.max(1, Math.min(profile.maxOutputs, Math.floor(Math.abs(Number(value.count)) || 1))));
+    const count = String(normalizeImageGenerationCount(value.count, profile.maxOutputs));
     const transparentBackground = profile.transparentBackground.supported && value.transparentBackground === "true" ? "true" : "false";
     return { size, quality, count, transparentBackground };
 }

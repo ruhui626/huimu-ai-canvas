@@ -22,8 +22,8 @@ const (
 	maxRuntimeRate                  = 999_999
 	maxRuntimeConcurrency           = 999
 	maxRuntimeTimeoutMinutes        = 9_999
-	defaultWorkerConcurrency        = 8
-	defaultChannelConcurrency       = 8
+	defaultWorkerConcurrency        = 32
+	defaultChannelConcurrency       = 32
 )
 
 // 画布 Agent 单步的输出上限与执行时限。上限是"每次模型调用"的边界（思考 + 正文 + 工具参数），
@@ -148,8 +148,8 @@ type PublicRuntimeLimits struct {
 func DefaultRuntimePolicy() RuntimePolicySetting {
 	return RuntimePolicySetting{
 		Resource: RuntimeResourcePolicy{
-			ResourceUploadMB:        50,
-			GeneratedFileMB:         64,
+			ResourceUploadMB:        128,
+			GeneratedFileMB:         128,
 			DailyUploadMB:           2048,
 			StoredFileGB:            20,
 			StructuredDataMB:        256,
@@ -161,7 +161,7 @@ func DefaultRuntimePolicy() RuntimePolicySetting {
 			RecycleBinRetentionDays: 30,
 		},
 		Storage: RuntimeStoragePolicy{
-			TransferTimeoutSeconds:      120,
+			TransferTimeoutSeconds:      180,
 			AccessURLTTLSeconds:         14_400,
 			ProviderAccessURLTTLSeconds: 14_400,
 			NonSeekableBufferMB:         64,
@@ -171,9 +171,9 @@ func DefaultRuntimePolicy() RuntimePolicySetting {
 			WorkerConcurrency:        defaultWorkerConcurrencyLimit(),
 			ChannelConcurrency:       defaultChannelConcurrencyLimit(),
 			ActiveTaskLimit:          5,
-			ImageTimeoutMinutes:      8,
+			ImageTimeoutMinutes:      12,
 			TextTimeoutMinutes:       8,
-			AudioTimeoutMinutes:      8,
+			AudioTimeoutMinutes:      10,
 			VideoTimeoutMinutes:      60,
 			StoryboardTimeoutMinutes: 20,
 			DefaultTimeoutMinutes:    10,
@@ -195,7 +195,7 @@ func DefaultRuntimePolicy() RuntimePolicySetting {
 			CustomRelayPerMinute:       120,
 			CustomRelayConcurrency:     4,
 			CustomRelayRequestMB:       32,
-			CustomRelayResponseMB:      32,
+			CustomRelayResponseMB:      128,
 			CustomRelayTimeoutMinutes:  10,
 			SystemRelayRequestMB:       64,
 			SystemRelayResponseMB:      128,

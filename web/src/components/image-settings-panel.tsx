@@ -1,4 +1,5 @@
 import { ImageSizePicker } from "./image-size-picker";
+import { IMAGE_GENERATION_COUNTS } from "@/lib/image-generation-count";
 import { imageResolutionUsesQuality } from "@/lib/image-size-presets";
 import { type ReactNode } from "react";
 import { ConfigProvider } from "antd";
@@ -52,17 +53,16 @@ type ImageSettingsPanelProps = {
     showCount?: boolean;
     className?: string;
     maxCount?: number;
-    quickCount?: number;
     /** 局部编辑等场景需要先允许选择参数，由后端负责最终计费校验。 */
     bypassPriceGuard?: boolean;
 };
 
-export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = true, showQuality = true, showTransparent = true, showSize = true, showCount = true, className = "w-[304px] space-y-3 rounded-2xl px-1 py-0.5", maxCount = 15, quickCount = 3, bypassPriceGuard = false }: ImageSettingsPanelProps) {
+export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = true, showQuality = true, showTransparent = true, showSize = true, showCount = true, className = "w-[304px] space-y-3 rounded-2xl px-1 py-0.5", maxCount = 4, bypassPriceGuard = false }: ImageSettingsPanelProps) {
     const profile = mergedImageCapabilityConfig(config, config.model || config.imageModel);
     const normalized = normalizeImageValue(profile, config);
     const quality = normalized.quality;
     const transparentBackground = normalized.transparentBackground === "true";
-    const effectiveMaxCount = Math.min(maxCount, profile.maxOutputs);
+    const effectiveMaxCount = Math.min(4, maxCount, profile.maxOutputs);
     const count = Math.max(1, Math.min(effectiveMaxCount, Number(normalized.count)));
     const activeSize = normalized.size;
     const activeQualityOptions = profile.quality.values.map((value) => qualityOptions.find((item) => item.value === value) || { value, label: value });
@@ -109,13 +109,12 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 {showCount && effectiveMaxCount > 1 ? (
                     <div className="space-y-2">
                         <SettingTitle color={theme.node.muted}>生成张数</SettingTitle>
-                        <div className="grid grid-cols-4 gap-1.5">
-                            {Array.from({ length: Math.min(quickCount, effectiveMaxCount) }, (_, index) => index + 1).map((value) => (
+                        <div className="grid grid-cols-3 gap-1.5">
+                            {IMAGE_GENERATION_COUNTS.filter((value) => value <= effectiveMaxCount).map((value) => (
                                 <OptionPill key={value} selected={count === value} theme={theme} onClick={() => onConfigChange("count", String(value))}>
-                                    {value}
+                                    {value}张
                                 </OptionPill>
                             ))}
-                            <CountInput value={count} quickCount={quickCount} max={effectiveMaxCount} theme={theme} onChange={(value) => onConfigChange("count", String(value || 1))} />
                         </div>
                     </div>
                 ) : null}
@@ -182,34 +181,6 @@ function OptionPill({ selected, disabled = false, theme, onClick, children }: { 
         >
             {children}
         </button>
-    );
-}
-
-function CountInput({ value, quickCount, max, theme, onChange }: { value: number; quickCount: number; max: number; theme: CanvasTheme; onChange: (value: number | null) => void }) {
-    const commit = (input: HTMLInputElement) => {
-        const next = Math.max(1, Math.min(max, Math.floor(Number(input.value) || 1)));
-        input.value = String(next);
-        onChange(next);
-    };
-    return (
-        <label className="flex h-8 overflow-hidden rounded-full text-xs" style={{ background: theme.toolbar.itemHover, color: theme.node.text }}>
-            <input
-                key={value > quickCount ? `custom-${value}` : "quick"}
-                type="number"
-                min={1}
-                max={max}
-                aria-label="自定义生成张数"
-                placeholder="输入"
-                className="min-w-0 flex-1 bg-transparent px-2 text-center outline-none placeholder:text-current placeholder:opacity-55 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                style={{ color: theme.node.text, WebkitTextFillColor: theme.node.text }}
-                defaultValue={value > quickCount ? value : ""}
-                onBlur={(event) => commit(event.currentTarget)}
-                onKeyDown={(event) => {
-                    if (event.key === "Enter") event.currentTarget.blur();
-                }}
-                onMouseDown={(event) => event.stopPropagation()}
-            />
-        </label>
     );
 }
 
