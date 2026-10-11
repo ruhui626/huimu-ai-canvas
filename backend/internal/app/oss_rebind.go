@@ -27,6 +27,7 @@ type OSSRebindReport struct {
 	ToBucket   string `json:"toBucket"`
 	Resources  int    `json:"resources"`
 	Checked    int    `json:"checked"`
+	Skipped    int    `json:"skipped"`
 	Applied    bool   `json:"applied"`
 	CheckToken string `json:"checkToken"`
 }
@@ -131,16 +132,36 @@ func (s *Service) RebindCopiedOSS(ctx context.Context, opts OSSRebindOptions) (*
 	if err := s.repo.CheckOSSRebindConflicts(opts.Endpoint, opts.FromBucket, opts.ToBucket, resources); err != nil {
 		return report, err
 	}
+	var problems []string
+	problemCount := 0
+	recordProblem := func(id string, err error) {
+		problemCount++
+		if len(problems) < 20 {
+			problems = append(problems, fmt.Sprintf("资源 %s：%s", id, err))
+		}
+	}
 	for _, resource := range resources {
+		if err := ctx.Err(); err != nil {
+			return report, NewAppError(http.StatusBadRequest, fmt.Sprintf("检查未完成（已通过 %d，跳过 %d，发现问题 %d），未修改任何资源绑定；请检查网络后重试", report.Checked, report.Skipped, problemCount))
+		}
+		if resource.Status == model.ResourceStatusFailed || resource.Status == model.ResourceStatusDeleted {
+			report.Skipped++
+			continue
+		}
 		if err := validateOSSRebindResource(resource); err != nil {
-			return report, NewAppError(http.StatusBadRequest, fmt.Sprintf("资源 %s：%s；整批停止，未修改任何资源绑定", resource.ID, err))
+			recordProblem(resource.ID, err)
+			continue
 		}
 		if err := checkOSSRebindObject(ctx, target, resource.ObjectKey, resource.Size); err != nil {
-			return report, NewAppError(http.StatusBadRequest, fmt.Sprintf("资源 %s：%s；未修改任何资源绑定", resource.ID, err))
+			recordProblem(resource.ID, err)
+			continue
 		}
 		report.Checked++
 	}
-	if opts.Apply {
+	if problemCount > 0 {
+		return report, NewAppError(http.StatusBadRequest, fmt.Sprintf("检查发现 %d 个资源问题（已通过 %d，跳过失败或已删除记录 %d；最多展示前 20 项）：\n%s\n整批停止，未修改任何资源绑定", problemCount, report.Checked, report.Skipped, strings.Join(problems, "\n")))
+	}
+	if opts.Apply && report.Checked > 0 {
 		if err := ctx.Err(); err != nil {
 			return report, err
 		}

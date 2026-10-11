@@ -5,6 +5,7 @@ export interface OSSRebindReport {
     toBucket: string;
     resources: number;
     checked: number;
+    skipped: number;
     applied: boolean;
     checkToken: string;
 }

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -283,5 +284,100 @@ func TestOSSRebindResourceDiagnostics(t *testing.T) {
 				t.Fatalf("expected %q, got %v", tc.message, err)
 			}
 		})
+	}
+}
+
+func TestOSSRebindSkipsTerminalRecords(t *testing.T) {
+	for _, allSkipped := range []bool{false, true} {
+		t.Run(fmt.Sprintf("all-skipped-%t", allSkipped), func(t *testing.T) {
+			svc, db, opts := rebindFixture(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/b.mp4" || allSkipped {
+					t.Errorf("terminal resource must not be requested: %s", r.URL.Path)
+				}
+				w.Header().Set("Content-Length", "12")
+			})
+			if err := db.Model(&model.Resource{}).Where("id = ?", "a").Updates(map[string]any{"status": "failed", "size": 0, "error": "upload failed"}).Error; err != nil {
+				t.Fatal(err)
+			}
+			if allSkipped {
+				if err := db.Model(&model.Resource{}).Where("id = ?", "b").Update("status", "deleted").Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			// A target record sharing a skipped failed key must not block healthy resources.
+			if err := db.Create(&model.Resource{ID: "target-copy", Provider: "aliyun", Endpoint: opts.Endpoint, Bucket: "new", ObjectKey: "a.mp4"}).Error; err != nil {
+				t.Fatal(err)
+			}
+			before, _ := svc.repo.Resource("a")
+			report, err := svc.RebindCopiedOSS(context.Background(), opts)
+			wantChecked := 1
+			if allSkipped {
+				wantChecked = 0
+			}
+			if err != nil || report.Checked != wantChecked || report.Skipped != 2-wantChecked || report.Applied {
+				t.Fatalf("preview: %+v %v", report, err)
+			}
+			opts.Apply, opts.BackupConfirmed, opts.MaintenanceConfirmed, opts.CheckToken = true, true, true, report.CheckToken
+			report, err = svc.RebindCopiedOSS(context.Background(), opts)
+			if err != nil || report.Applied != !allSkipped {
+				t.Fatalf("apply: %+v %v", report, err)
+			}
+			after, _ := svc.repo.Resource("a")
+			got, _ := json.Marshal(after)
+			want, _ := json.Marshal(before)
+			if string(got) != string(want) {
+				t.Fatal("failed record was modified")
+			}
+			b, _ := svc.repo.Resource("b")
+			if (!allSkipped && b.Bucket != "new") || (allSkipped && b.Bucket != "old") {
+				t.Fatalf("wrong binding: %+v", b)
+			}
+			opts.Apply, opts.CheckToken = false, ""
+			report, err = svc.RebindCopiedOSS(context.Background(), opts)
+			if err != nil || report.Checked != 0 || report.Skipped != 2-wantChecked {
+				t.Fatalf("repeat: %+v %v", report, err)
+			}
+		})
+	}
+}
+
+func TestOSSRebindAggregatesProblems(t *testing.T) {
+	svc, db, opts := rebindFixture(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})
+	if err := db.Model(&model.Resource{}).Where("id = ?", "a").Update("status", "pending").Error; err != nil {
+		t.Fatal(err)
+	}
+	opts.Apply, opts.BackupConfirmed, opts.MaintenanceConfirmed = true, true, true
+	_, err := svc.RebindCopiedOSS(context.Background(), opts)
+	if err == nil || !strings.Contains(err.Error(), "2 个资源问题") || !strings.Contains(err.Error(), "资源 a") || !strings.Contains(err.Error(), "资源 b") || !strings.Contains(err.Error(), "HTTP 404") {
+		t.Fatalf("missing aggregated reasons: %v", err)
+	}
+	var count int64
+	if err := db.Model(&model.Resource{}).Where("bucket = ?", "old").Count(&count).Error; err != nil || count != 2 {
+		t.Fatalf("batch was changed: %d %v", count, err)
+	}
+}
+
+func TestOSSRebindSkippedRecordRetryAbortsApply(t *testing.T) {
+	var dbRef *gorm.DB
+	svc, db, opts := rebindFixture(t, func(w http.ResponseWriter, r *http.Request) {
+		// A retry starts after the snapshot, before the transaction takes its locks.
+		if err := dbRef.Model(&model.Resource{}).Where("id = ?", "a").Update("status", "pending").Error; err != nil {
+			t.Error(err)
+		}
+		w.Header().Set("Content-Length", "12")
+	})
+	dbRef = db
+	if err := db.Model(&model.Resource{}).Where("id = ?", "a").Update("status", "failed").Error; err != nil {
+		t.Fatal(err)
+	}
+	opts.Apply, opts.BackupConfirmed, opts.MaintenanceConfirmed = true, true, true
+	if _, err := svc.RebindCopiedOSS(context.Background(), opts); err == nil || !strings.Contains(err.Error(), "资源在检查后发生变化") {
+		t.Fatalf("retry race accepted: %v", err)
+	}
+	b, _ := svc.repo.Resource("b")
+	if b.Bucket != "old" {
+		t.Fatal("partial migration persisted")
 	}
 }

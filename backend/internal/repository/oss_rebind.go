@@ -42,6 +42,9 @@ func (r *Repository) CheckOSSRebindConflicts(endpoint, from, to string, resource
 		return OSSRebindConflict("源桶或目标桶存在物理删除任务，已停止；请先人工核对")
 	}
 	for _, resource := range resources {
+		if resource.Status == model.ResourceStatusFailed || resource.Status == model.ResourceStatusDeleted {
+			continue
+		}
 		if err := r.db.Model(&model.Resource{}).Where("provider = ? AND endpoint = ? AND bucket = ? AND object_key = ?", "aliyun", endpoint, to, resource.ObjectKey).Count(&count).Error; err != nil {
 			return err
 		}
@@ -82,6 +85,11 @@ func (r *Repository) ApplyOSSRebind(endpoint, from, to string, checked []model.R
 			return err
 		}
 		for _, resource := range checked {
+			// Keep terminal failed/deleted records at their original storage location.
+			// They remain in the snapshot above so concurrent retries still abort apply.
+			if resource.Status == model.ResourceStatusFailed || resource.Status == model.ResourceStatusDeleted {
+				continue
+			}
 			result := tx.Model(&model.Resource{}).Where("id = ? AND updated_at = ? AND bucket = ?", resource.ID, resource.UpdatedAt, from).
 				Updates(map[string]any{"bucket": to, "storage_setting_id": location.ID, "public_url": "", "updated_at": time.Now().UTC()})
 			if result.Error != nil {

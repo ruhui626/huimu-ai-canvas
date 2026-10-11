@@ -31,7 +31,7 @@ paths:
     post:
       tags: [admin]
       summary: 临时检查历史平台 OSS 换桶绑定
-      description: 仅管理员。目标读取已保存配置；只做 HEAD 和大小检查，不写资源。不支持个人存储、衍生文件或在线并发迁移。
+      description: 仅管理员。目标读取已保存配置；只对原文件做 HEAD 和大小检查，不写资源。跳过 failed/deleted 记录并保留原绑定，允许携带衍生元数据；处理中或异常正常资源阻止迁移，资源问题汇总展示前 20 项。不支持个人存储或在线并发迁移。
       requestBody:
         required: true
         content:
@@ -42,7 +42,7 @@ paths:
               properties:
                 fromBucket: {type: string}
       responses:
-        "200": {description: 成功信封 data 含 fromBucket、toBucket、resources、checked、applied=false 和 checkToken 检查快照}
+        "200": {description: 成功信封 data 含 fromBucket、toBucket、resources、checked、skipped、applied=false 和 checkToken 检查快照；skipped 为失败或已删除记录数}
         "400": {description: 配置、资源或文件检查失败}
         "401": {description: 未登录}
         "403": {description: 非管理员}
@@ -65,7 +65,7 @@ paths:
                 backupConfirmed: {type: boolean, enum: [true]}
                 maintenanceConfirmed: {type: boolean, enum: [true]}
       responses:
-        "200": {description: 成功信封 data 含 fromBucket、toBucket、resources、checked、applied 和 checkToken；请求中断须先重新检查确认结果}
+        "200": {description: 成功信封 data 含 fromBucket、toBucket、resources、checked、skipped、applied 和 checkToken；没有可迁移资源时 applied=false；请求中断须先重新检查确认结果}
         "400": {description: 缺少确认、快照过期或资源检查失败}
         "401": {description: 未登录}
         "403": {description: 非管理员}
