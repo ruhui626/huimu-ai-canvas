@@ -7,7 +7,7 @@ import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import type { CanvasNodeMetadata } from "@/types/canvas";
 import type { AiConfig } from "@/stores/use-config-store";
 import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
-import { isSeedanceVideoConfig } from "@/lib/seedance-video";
+import { shouldShowSeedanceFrameRatioHint } from "@/lib/seedance-video";
 
 type VideoFrameOption = {
     nodeId: string;
@@ -41,7 +41,7 @@ export function CanvasVideoPromptTools({ config, metadata, frameOptions, onMetad
     const theme = canvasThemes[useActiveTheme()];
     const startFrame = metadata?.videoStartFrameNodeId || EMPTY_FRAME_VALUE;
     const endFrame = metadata?.videoEndFrameNodeId || EMPTY_FRAME_VALUE;
-    const showRatioHint = Boolean(config && isSeedanceVideoConfig(config) && frameOptions.some((option) => option.nodeId === startFrame));
+    const showRatioHint = Boolean(config && shouldShowSeedanceFrameRatioHint(config) && frameOptions.some((option) => option.nodeId === startFrame));
     const supportsAdaptive = Boolean(config && modelCapabilityConfigFor(config, config.model || config.videoModel).video?.ratios.includes("adaptive"));
 
     const setFrame = (key: "videoStartFrameNodeId" | "videoEndFrameNodeId", value: string) => {

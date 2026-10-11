@@ -50,6 +50,12 @@ export function isSeedanceVideoConfig(config: AiConfig | Pick<AiConfig, "model" 
     return isArkPlanBaseUrl(request.baseUrl || "") || isSeedanceVideoModel(modelOptionName(request.model || request.videoModel));
 }
 
+// UI hint only: provider aliases need not contain the Seedance model name.
+export function shouldShowSeedanceFrameRatioHint(config: AiConfig): boolean {
+    const { interfaceType } = resolveModelRequestConfig(config, config.model || config.videoModel);
+    return interfaceType === "volcengine-ark-video" || interfaceType === "volcengine-ark-agent-plan-video" || isSeedanceVideoConfig(config);
+}
+
 export function normalizeResolutionToken(value: string): string {
     const token = String(value || "").toLowerCase();
     const aliases: Record<string, string> = { low: "480p", auto: "720p", high: "720p", medium: "720p", "4k": "2160p", "": "720p" };
