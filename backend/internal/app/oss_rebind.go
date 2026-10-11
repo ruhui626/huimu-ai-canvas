@@ -132,8 +132,8 @@ func (s *Service) RebindCopiedOSS(ctx context.Context, opts OSSRebindOptions) (*
 		return report, err
 	}
 	for _, resource := range resources {
-		if resource.Status != "ready" || resource.ObjectKey == "" || resource.Size <= 0 || resource.PlaybackStatus == "processing" || resource.PlaybackObjectKey != "" || resource.ThumbnailStatus == "processing" || resource.ThumbnailStatus == "ready" {
-			return report, NewAppError(http.StatusBadRequest, fmt.Sprintf("资源 %s 尚未就绪、大小无效或含衍生文件，整批停止", resource.ID))
+		if err := validateOSSRebindResource(resource); err != nil {
+			return report, NewAppError(http.StatusBadRequest, fmt.Sprintf("资源 %s：%s；整批停止，未修改任何资源绑定", resource.ID, err))
 		}
 		if err := checkOSSRebindObject(ctx, target, resource.ObjectKey, resource.Size); err != nil {
 			return report, NewAppError(http.StatusBadRequest, fmt.Sprintf("资源 %s：%s；未修改任何资源绑定", resource.ID, err))
@@ -150,6 +150,28 @@ func (s *Service) RebindCopiedOSS(ctx context.Context, opts OSSRebindOptions) (*
 		report.Applied = true
 	}
 	return report, nil
+}
+
+func validateOSSRebindResource(resource model.Resource) error {
+	switch {
+	case resource.Status != model.ResourceStatusReady:
+		return fmt.Errorf("原文件尚未就绪（状态 %q）", resource.Status)
+	case strings.TrimSpace(resource.ObjectKey) == "":
+		return errors.New("原文件对象路径为空")
+	case resource.Size <= 0:
+		return fmt.Errorf("原文件大小无效（%d 字节）", resource.Size)
+	case resource.PlaybackStatus == model.PlaybackStatusProcessing:
+		return errors.New("视频播放版本正在处理，请等待处理结束后重新检查")
+	case resource.ThumbnailStatus == "processing":
+		return errors.New("缩略图正在处理，请等待处理结束后重新检查")
+	case resource.PlaybackStatus == model.PlaybackStatusReady && strings.TrimSpace(resource.PlaybackObjectKey) == "":
+		return errors.New("视频播放版本已就绪但文件路径为空，请先核对资源记录")
+	case resource.ThumbnailStatus == "ready" && resource.ThumbnailSize <= 0:
+		return errors.New("缩略图已就绪但文件大小无效，请先核对资源记录")
+	}
+	// Playback copies are local-only; thumbnail access currently falls back to
+	// the original. Preserve derivative metadata, without inventing OSS keys.
+	return nil
 }
 
 func checkOSSRebindObject(ctx context.Context, value ossSettingValue, key string, size int64) error {
