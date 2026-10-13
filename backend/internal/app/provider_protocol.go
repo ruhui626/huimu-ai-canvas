@@ -48,6 +48,9 @@ func runProtocolAdapterTaskWithPolicy(ctx context.Context, input canvasGeneratio
 	taskID := resumedProviderRequestID(ctx)
 	var created protocol.CreateResult
 	if taskID == "" {
+		if err := validateYouchuanPromptParameters(input.Config.InterfaceType, input.Prompt); err != nil {
+			return nil, err
+		}
 		// 幂等键只存在于宿主请求元数据中，声明式插件可以把它映射到 Header，
 		// 但不能把宿主控制字段泄漏到供应商 JSON body。恢复已有 taskID 时不会进入 create 分支。
 		key, _ := ctx.Value(providerSubmissionKeyContext{}).(string)

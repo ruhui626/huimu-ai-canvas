@@ -23,7 +23,7 @@
 | --- | --- | --- | --- | --- |
 | `model` | string | 是 | `text: --v / --niji` | v8.1、v8.2、v7、niji-7；不是上游 JSON model 字段。 |
 | `providerOptions` | object | 否 | `text: --stylize / --weird / --chaos` | youchuan-image 命名空间：stylize 0–1000 默认100，weird 0–3000 平台默认50，chaos 0–100 平台默认5，均为整数。 |
-| `prompt` | string | 是 | `text` | 自然语言提示词，最多 1024 字；第一阶段不允许手写 -- 参数。 |
+| `prompt` | string | 是 | `text` | 自然语言提示词，长度由后台模型能力配置校验；不允许手写 -- 参数。 |
 | `images` | media[] | 否 | `text 前置 URL` | 最多 20 张普通 HTTPS 参考图，不支持蒙版、角色或风格专用引用。 |
 | `aspectRatio` | string | 否 | `text: --ar` | 画面比例，默认 1:1。 |
 | `imageCount` | integer | 否 | `一次标准任务` | 只能提交一组，通常返回四张；全部保存，按一次任务计费。 |
@@ -81,7 +81,7 @@
   "apiVersion": "yingce.plugin/v2",
   "id": "youchuan-image",
   "name": "悠船图片",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "author": "悠船 / 绘幕",
   "description": "悠船图片 独立请求协议插件。",
   "documentation": "<当前插件的完整 documentation，由 README.md 与 docs/interface.md 拼接而成；为避免 JSON 递归，此处不重复展开正文。>",
@@ -147,7 +147,7 @@
             "type": "string",
             "required": true,
             "mapping": "text",
-            "description": "自然语言提示词，最多 1024 字；第一阶段不允许手写 -- 参数。"
+            "description": "自然语言提示词，长度由后台模型能力配置校验；不允许手写 -- 参数。"
           },
           {
             "name": "images",
@@ -378,32 +378,18 @@
           },
           {
             "assert": {
-              "$and": [
+              "$gt": [
                 {
-                  "$gt": [
-                    {
-                      "$len": {
-                        "$trim": {
-                          "$ref": "request.prompt"
-                        }
-                      }
-                    },
-                    0
-                  ]
+                  "$len": {
+                    "$trim": {
+                      "$ref": "request.prompt"
+                    }
+                  }
                 },
-                {
-                  "$lte": [
-                    {
-                      "$len": {
-                        "$ref": "request.prompt"
-                      }
-                    },
-                    1024
-                  ]
-                }
+                0
               ]
             },
-            "message": "悠船提示词须为 1 到 1024 字符。"
+            "message": "悠船提示词不能为空。"
           },
           {
             "assert": {
@@ -421,7 +407,7 @@
                 1
               ]
             },
-            "message": "悠船第一阶段不支持手写 -- 参数，请通过模型与比例设置选择；暂不开放高清、草图或极速模式。"
+            "message": "提示词包含手写模型参数，请移除，并通过模型选择和高级设置调整。"
           },
           {
             "assert": {

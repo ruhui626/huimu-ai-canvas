@@ -348,6 +348,9 @@ func validateImageTask(profile *ImageCapabilityConfig, input canvasGenerationInp
 	if profile == nil {
 		return nil
 	}
+	if err := validateModelPromptLength("图片", input.Prompt, profile.References.PromptMaxChars); err != nil {
+		return err
+	}
 	modelName := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(input.Config.Model)), "models/")
 	if input.Config.InterfaceType == string(model.ChannelInterfaceGrokImage) && modelName == "grok-imagine-image-quality" {
 		const maxPromptBytes = 8000

@@ -33,6 +33,18 @@ func TestYouchuanStandardJobRequest(t *testing.T) {
 	}
 }
 
+func TestYouchuanPluginDefersPromptLengthToCapabilities(t *testing.T) {
+	a := officialPackageAdapter(t, "youchuan-image.yingce-plugin", "youchuan-image")
+	prompt := strings.Repeat("猫", 8130)
+	spec, err := a.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{Model: "v8.2", Prompt: prompt}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(manifestTestBody(t, spec)["text"].(string), prompt+" --v") {
+		t.Fatal("prompt was truncated")
+	}
+}
+
 func TestYouchuanRejectsUnpricedAndUnsupportedRequests(t *testing.T) {
 	a := officialPackageAdapter(t, "youchuan-image.yingce-plugin", "youchuan-image")
 	for _, suffix := range []string{" --hd", " --turbo", " --draft", " --v 7", " --bs 4", "\n--q 4"} {
@@ -42,7 +54,7 @@ func TestYouchuanRejectsUnpricedAndUnsupportedRequests(t *testing.T) {
 	}
 	for _, r := range []GenerationRequest{
 		{Model: "v6", Prompt: "cat"}, {Model: "v8.2", Prompt: "cat", ImageCount: 4},
-		{Model: "v8.2", Prompt: "cat", AspectRatio: "2048x2048"}, {Model: "v8.2", Prompt: strings.Repeat("猫", 1025)},
+		{Model: "v8.2", Prompt: "cat", AspectRatio: "2048x2048"}, {Model: "v8.2", Prompt: "   "},
 		{Model: "v8.2", Prompt: "cat", Images: []MediaReference{{URL: "https://example.com/a.png", Role: "mask"}}},
 		{Model: "v8.2", Prompt: "cat", Images: []MediaReference{{URL: "https://example.com/a.png --hd"}}},
 		{Model: "v8.2", Prompt: "cat", Images: []MediaReference{{DataURL: "data:image/png;base64,aA=="}}},

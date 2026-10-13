@@ -21,7 +21,7 @@
 | 统一字段 | 类型 | 必填 | 上游映射 | 说明 |
 | --- | --- | --- | --- | --- |
 | `model` | string | 是 | `create path` | v8.1 / v8.2 / v7 分别选择 text-to-image-v81 / text-to-image-v8.2-fast / text-to-image-v7；不是请求体字段。 |
-| `prompt` | string | 是 | `prompt` | 自然语言，不允许手写 -- 参数；V8.1 最多 8130、V8.2 最多 5850、V7 最多 8192 字符。 |
+| `prompt` | string | 是 | `prompt` | 自然语言，不允许手写 -- 参数；长度由后台模型能力配置校验，默认值按模型版本初始化。 |
 | `images` | media[] | 否 | `imageUrl` | 最多一张普通 HTTPS 参考图，每张最多 20 MiB；不开放风格或主体参考。 |
 | `aspectRatio` | string | 否 | `aspectRatio` | 七种常用比例，默认 1:1。 |
 | `imageCount` | integer | 否 | `one job` | 一次提交一个任务，保存实际返回的全部图片；后台配置整次任务价格。 |
@@ -88,7 +88,7 @@ RunningHub 标准模型 API，需企业级-共享 API Key（Bearer），不是 R
   "apiVersion": "yingce.plugin/v2",
   "id": "runninghub-youchuan-image",
   "name": "RunningHub 悠船图片",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "author": "RunningHub / 绘幕",
   "description": "RunningHub 悠船图片 独立请求协议插件。",
   "documentation": "<当前插件的完整 documentation，由 README.md 与 docs/interface.md 拼接而成；为避免 JSON 递归，此处不重复展开正文。>",
@@ -140,7 +140,7 @@ RunningHub 标准模型 API，需企业级-共享 API Key（Bearer），不是 R
             "type": "string",
             "required": true,
             "mapping": "prompt",
-            "description": "自然语言，不允许手写 -- 参数；V8.1 最多 8130、V8.2 最多 5850、V7 最多 8192 字符。"
+            "description": "自然语言，不允许手写 -- 参数；长度由后台模型能力配置校验，默认值按模型版本初始化。"
           },
           {
             "name": "images",
@@ -212,58 +212,18 @@ RunningHub 标准模型 API，需企业级-共享 API Key（Bearer），不是 R
           },
           {
             "assert": {
-              "$and": [
+              "$gt": [
                 {
-                  "$gt": [
-                    {
-                      "$len": {
-                        "$trim": {
-                          "$ref": "request.prompt"
-                        }
-                      }
-                    },
-                    0
-                  ]
-                },
-                {
-                  "$lte": [
-                    {
-                      "$len": {
-                        "$ref": "request.prompt"
-                      }
-                    },
-                    {
-                      "$if": {
-                        "condition": {
-                          "$eq": [
-                            {
-                              "$ref": "request.model"
-                            },
-                            "v8.1"
-                          ]
-                        },
-                        "then": 8130,
-                        "else": {
-                          "$if": {
-                            "condition": {
-                              "$eq": [
-                                {
-                                  "$ref": "request.model"
-                                },
-                                "v7"
-                              ]
-                            },
-                            "then": 8192,
-                            "else": 5850
-                          }
-                        }
-                      }
+                  "$len": {
+                    "$trim": {
+                      "$ref": "request.prompt"
                     }
-                  ]
-                }
+                  }
+                },
+                0
               ]
             },
-            "message": "RunningHub 悠船提示词为空或超过当前版本长度上限。"
+            "message": "RunningHub 悠船提示词不能为空。"
           },
           {
             "assert": {
@@ -281,7 +241,7 @@ RunningHub 标准模型 API，需企业级-共享 API Key（Bearer），不是 R
                 1
               ]
             },
-            "message": "RunningHub 悠船当前仅开放标准生成，请勿手写 -- 参数。"
+            "message": "提示词包含手写模型参数，请移除，并通过模型选择和高级设置调整。"
           },
           {
             "assert": {
@@ -462,19 +422,6 @@ RunningHub 标准模型 API，需企业级-共享 API Key（Bearer），不是 R
                                   "edit_source"
                                 ]
                               ]
-                            },
-                            {
-                              "$lte": [
-                                {
-                                  "$coalesce": [
-                                    {
-                                      "$ref": "media.metadata.bytes"
-                                    },
-                                    0
-                                  ]
-                                },
-                                20971520
-                              ]
                             }
                           ]
                         }
@@ -485,7 +432,7 @@ RunningHub 标准模型 API，需企业级-共享 API Key（Bearer），不是 R
                 0
               ]
             },
-            "message": "RunningHub 悠船仅支持不超过 20 MiB 的普通 HTTPS 参考图，不支持蒙版、风格或主体参考。"
+            "message": "RunningHub 悠船仅支持普通 HTTPS 参考图，不支持蒙版、风格或主体参考；文件大小由后台模型能力配置校验。"
           },
           {
             "assert": {

@@ -69,7 +69,7 @@ func TestRunningHubYouchuanValidation(t *testing.T) {
 		r.Model = model
 		cases = append(cases, r)
 	}
-	for _, prompt := range []string{"", "cat --hd", "cat --sref x", strings.Repeat("猫", 5851)} {
+	for _, prompt := range []string{"", "cat --hd", "cat --sref x"} {
 		r := base
 		r.Prompt = prompt
 		cases = append(cases, r)
@@ -93,9 +93,6 @@ func TestRunningHubYouchuanValidation(t *testing.T) {
 	r.Images = []MediaReference{{URL: "https://example.com/a.png"}, {URL: "https://example.com/b.png"}}
 	cases = append(cases, r)
 	r = base
-	r.Images = []MediaReference{{URL: "https://example.com/a.png", Metadata: map[string]any{"bytes": 20*1024*1024 + 1}}}
-	cases = append(cases, r)
-	r = base
 	r.Images = []MediaReference{{DataURL: "data:image/png;base64,aA=="}}
 	cases = append(cases, r)
 	r = base
@@ -117,8 +114,8 @@ func TestRunningHubYouchuanValidation(t *testing.T) {
 			t.Fatal(model, err)
 		}
 		r.Prompt += "猫"
-		if _, err := a.BuildCreate(context.Background(), RequestContext{Request: r}); err == nil {
-			t.Fatal("accepted oversized prompt", model)
+		if _, err := a.BuildCreate(context.Background(), RequestContext{Request: r}); err != nil {
+			t.Fatal("plugin must defer prompt length to model capabilities", model, err)
 		}
 	}
 }

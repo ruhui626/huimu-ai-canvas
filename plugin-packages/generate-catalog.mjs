@@ -115,13 +115,12 @@ function add(spec) {
 const rhYouchuanOption = (name, fallback) => coalesce(ref(`request.providerOptions.runninghub-youchuan-image.${name}`), fallback);
 const rhYouchuanV81 = eq(ref("request.model"), "v8.1");
 const rhYouchuanV7 = eq(ref("request.model"), "v7");
-const rhYouchuanPromptLimit = conditional(rhYouchuanV81, 8130, conditional(rhYouchuanV7, 8192, 5850));
 add({
-  id: "runninghub-youchuan-image", providerId: "runninghub-youchuan-image", name: "RunningHub 悠船图片", vendor: "RunningHub", capability: "image", version: "2.0.0",
+  id: "runninghub-youchuan-image", providerId: "runninghub-youchuan-image", name: "RunningHub 悠船图片", vendor: "RunningHub", capability: "image", version: "2.0.1",
   baseUrl: "https://www.runninghub.ai", auth: bearer, requiresPublicMediaUrls: true,
   params: [
     ["model", "string", true, "create path", "v8.1 / v8.2 / v7 分别选择 text-to-image-v81 / text-to-image-v8.2-fast / text-to-image-v7；不是请求体字段。"],
-    ["prompt", "string", true, "prompt", "自然语言，不允许手写 -- 参数；V8.1 最多 8130、V8.2 最多 5850、V7 最多 8192 字符。"],
+    ["prompt", "string", true, "prompt", "自然语言，不允许手写 -- 参数；长度由后台模型能力配置校验，默认值按模型版本初始化。"],
     ["images", "media[]", false, "imageUrl", "最多一张普通 HTTPS 参考图，每张最多 20 MiB；不开放风格或主体参考。"],
     ["aspectRatio", "string", false, "aspectRatio", "七种常用比例，默认 1:1。"],
     ["imageCount", "integer", false, "one job", "一次提交一个任务，保存实际返回的全部图片；后台配置整次任务价格。"],
@@ -130,16 +129,15 @@ add({
   validations: [
     { assert: { $in: [ref("request.model"), ["v8.1", "v8.2", "v7"]] }, message: "RunningHub 悠船仅支持 v8.1、v8.2、v7。" },
     { assert: and(gte(ref("request.imageCount"), 0), lte(ref("request.imageCount"), 1)), message: "RunningHub 悠船一次只能提交一个任务。" },
-    { assert: and(gt(len(trim(ref("request.prompt"))), 0), lte(len(ref("request.prompt")), rhYouchuanPromptLimit)), message: "RunningHub 悠船提示词为空或超过当前版本长度上限。" },
-    { assert: eq(len(split(ref("request.prompt"), "--")), 1), message: "RunningHub 悠船当前仅开放标准生成，请勿手写 -- 参数。" },
+    { assert: gt(len(trim(ref("request.prompt"))), 0), message: "RunningHub 悠船提示词不能为空。" },
+    { assert: eq(len(split(ref("request.prompt"), "--")), 1), message: "提示词包含手写模型参数，请移除，并通过模型选择和高级设置调整。" },
     { assert: { $in: [coalesce(ref("request.aspectRatio"), "1:1"), ["1:1", "9:16", "16:9", "3:4", "4:3", "3:2", "2:3"]] }, message: "RunningHub 悠船画面比例不受支持。" },
     { assert: and(lte(len(ref("request.images")), 1), eq(len(ref("request.videos")), 0), eq(len(ref("request.audios")), 0)), message: "RunningHub 悠船最多使用一张普通参考图，不支持视频或音频输入。" },
     { assert: eq(len(filter(ref("request.images"), "media", { $not: and(
       eq(first(split(ref("media.value"), ":")), "https"),
       ...[" ", "\n", "\r", "\t", "--"].map((separator) => eq(len(split(ref("media.value"), separator)), 1)),
       { $in: [coalesce(ref("media.role"), "reference_image"), ["reference_image", "edit_source"]] },
-      lte(coalesce(ref("media.metadata.bytes"), 0), 20 * 1024 * 1024),
-    ) })), 0), message: "RunningHub 悠船仅支持不超过 20 MiB 的普通 HTTPS 参考图，不支持蒙版、风格或主体参考。" },
+    ) })), 0), message: "RunningHub 悠船仅支持普通 HTTPS 参考图，不支持蒙版、风格或主体参考；文件大小由后台模型能力配置校验。" },
     ...[["stylize", 100, 1000], ["chaos", 5, 100], ["weird", 50, 3000]].map(([name, fallback, maximum]) => ({
       assert: conditional(and(rhYouchuanV81, eq(name, "weird")), true, and(gte(rhYouchuanOption(name, fallback), 0), lte(rhYouchuanOption(name, fallback), maximum), eq(rhYouchuanOption(name, fallback), toInt(rhYouchuanOption(name, fallback))))),
       message: `RunningHub 悠船 ${name} 必须为 0 到 ${maximum} 的整数。`,
@@ -178,7 +176,7 @@ const youchuanPrompt = { $concat: [
   ...youchuanControls.flatMap(([name, fallback]) => [` --${name} `, youchuanOption(name, fallback)]),
 ] };
 add({
-  id: "youchuan-image", providerId: "youchuan-image", name: "悠船图片", vendor: "悠船", capability: "image", version: "2.1.0",
+  id: "youchuan-image", providerId: "youchuan-image", name: "悠船图片", vendor: "悠船", capability: "image", version: "2.1.1",
   baseUrl: "https://ali.youchuan.cn", requiresPublicMediaUrls: true,
   auth: { type: "youchuan", field: "apiKey", secretField: "secretKey" },
   configuration: { fields: [
@@ -188,7 +186,7 @@ add({
   params: [
     ["model", "string", true, "text: --v / --niji", "v8.1、v8.2、v7、niji-7；不是上游 JSON model 字段。"],
     ["providerOptions", "object", false, "text: --stylize / --weird / --chaos", "youchuan-image 命名空间：stylize 0–1000 默认100，weird 0–3000 平台默认50，chaos 0–100 平台默认5，均为整数。"],
-    ["prompt", "string", true, "text", "自然语言提示词，最多 1024 字；第一阶段不允许手写 -- 参数。"],
+    ["prompt", "string", true, "text", "自然语言提示词，长度由后台模型能力配置校验；不允许手写 -- 参数。"],
     ["images", "media[]", false, "text 前置 URL", "最多 20 张普通 HTTPS 参考图，不支持蒙版、角色或风格专用引用。"],
     ["aspectRatio", "string", false, "text: --ar", "画面比例，默认 1:1。"],
     ["imageCount", "integer", false, "一次标准任务", "只能提交一组，通常返回四张；全部保存，按一次任务计费。"],
@@ -200,8 +198,8 @@ add({
       message: `悠船 ${name} 必须为 0 到 ${maximum} 的整数。`,
     })),
     { assert: and(gte(ref("request.imageCount"), 0), lte(ref("request.imageCount"), 1)), message: "悠船一次提交一组（通常四张），不能重复批量提交。" },
-    { assert: and(gt(len(trim(ref("request.prompt"))), 0), lte(len(ref("request.prompt")), 1024)), message: "悠船提示词须为 1 到 1024 字符。" },
-    { assert: eq(len(split(ref("request.prompt"), "--")), 1), message: "悠船第一阶段不支持手写 -- 参数，请通过模型与比例设置选择；暂不开放高清、草图或极速模式。" },
+    { assert: gt(len(trim(ref("request.prompt"))), 0), message: "悠船提示词不能为空。" },
+    { assert: eq(len(split(ref("request.prompt"), "--")), 1), message: "提示词包含手写模型参数，请移除，并通过模型选择和高级设置调整。" },
     { assert: { $in: [coalesce(ref("request.aspectRatio"), "1:1"), ["1:1", "3:2", "2:3", "4:3", "3:4", "4:5", "5:4", "16:9", "9:16", "21:9"]] }, message: "悠船当前比例不受支持，请重新选择画面比例。" },
     { assert: and(lte(len(ref("request.images")), 20), eq(len(ref("request.videos")), 0), eq(len(ref("request.audios")), 0)), message: "悠船图片仅支持最多 20 张参考图，不支持视频或音频输入。" },
     { assert: eq(len(filter(ref("request.images"), "media", { $not: and(
