@@ -5,6 +5,13 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## DashScope Qwen / Wan 图片尺寸传递
+
+- 插件 2.0.1 将后台允许的像素尺寸从 `宽x高` 转成 `宽*高`，不再因为不在固定映射中而静默省略；保留原有比例转换，空值或 auto 才省略，无效格式明确报错。
+- 不修改前端、后台模型能力配置、生成数量、结果保存或计费。部署需携带更新后的插件包并重启后端。
+- `go test ./internal/protocol -count=1` 通过，覆盖实际插件包尺寸映射、自动省略、无效格式及原有协议回归；未发起真实付费生成。
+- 待真实渠道验收：分别选择横屏 16:9、竖屏 9:16 和自动，核对请求中的 `parameters.size` 与最终图片尺寸；模型支持范围仍以实际上游为准，管理员配置不代表上游必然支持。
+
 ## 悠船提示词上限统一校验
 
 - 手写参数错误不再使用“第一阶段”文案；两套悠船任务在提交前展示参数名及数值，例如 `--v 8.2`、`--stylize 300`，最多展示五项，每项最多 48 个 ASCII 字符。非数值参数不回显其任意文本或 URL 值。保留原有 `--` 拦截规则，其他协议不受影响；待前台真实错误展示验收。
@@ -1277,9 +1284,9 @@ PR #507 核心能力已按主分支实现保留，并补齐小视口尺寸约束
 
 - 新增官方协议包 `plugin-packages/dashscope-qwen-image.yingce-plugin`，解决 `qwen-image-3.0-pro` / `wan2.7-image-pro` 无法调用的问题：这两个模型属于百炼多模态模型，走 OpenAI 图片端点会被网关判为“模型与端点不匹配”，官方错误码表现为 `url error, please check url`。
 - 协议形态：`POST /api/v1/services/aigc/image-generation/generation`（`X-DashScope-Async: enable`）+ 轮询 `GET /api/v1/tasks/{taskId}`；参考图放在 `input.messages[].content[].image`（优先 Base64 data URL），不使用 `/v1/images/edits` 的 multipart。
-- 已由单元测试覆盖：端点与异步头、文生图只发 text、图生图按 order 排序并优先 Base64、`size` 采用 DashScope 的星号格式且未登记档位省略、`enable_thinking` 固定 false、响应从 `output.choices[0].message.content[].image` 取图、上游失败保留错误信息。`go test ./internal/protocol/` 与 `go build ./...` 通过。
+- 已由单元测试覆盖：端点与异步头、文生图只发 text、图生图按 order 排序并优先 Base64、`size` 采用 DashScope 的星号格式且保留明确像素尺寸、`enable_thinking` 固定 false、响应从 `output.choices[0].message.content[].image` 取图、上游失败保留错误信息。
 - 待真实账号验收：用北京地域 Key 走一次文生图与一次图生图（换装），确认出图成功、参考图不报 url error。
-- 已知边界：协议用 `originPath` 声明请求路径，请求路径会替换渠道 Base URL 的路径段，因此渠道继续沿用 `.../compatible-mode/v1` 也能命中原生端点（`.../api/v1/services/...`）；只有域名需要正确。协议把 `size` 映射为 1024 级竖版/方形档位，未登记的档位会被省略并交由模型自动推荐（官方要求像素面积 512*512~2048*2048）。
+- 已知边界：协议用 `originPath` 声明请求路径，请求路径会替换渠道 Base URL 的路径段，因此渠道继续沿用 `.../compatible-mode/v1` 也能命中原生端点（`.../api/v1/services/...`）；只有域名需要正确。保留原有比例映射，后台允许的像素尺寸转换后直接传递；实际支持范围须按具体上游模型配置，不再静默改成自动。
 - 尚未处理：AI 模特页仍按“带参考图即走 `/images/edits`”的通用规则分支，未按协议能力判断；换成该插件后两阶段派生能否直接复用需实测确认。
 
 ## Agnes 图像协议插件（agnes-image）

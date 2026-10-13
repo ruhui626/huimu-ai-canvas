@@ -41,7 +41,7 @@
 | `create.body.model` | `{"$ref":"request.model"}` |
 | `create.body.input.messages[0].role` | `"user"` |
 | `create.body.input.messages[0].content` | `{"$concatArrays":[{"$map":{"from":{"$sortByOrder":{"$ref":"request.images"}},"as":"media","in":{"image":{"$coalesce":[{"$ref":"media.dataUrl"},{"$ref":"media.url"}]}}}},[{"text":{"$ref":"request.prompt"}}]]}` |
-| `create.body.parameters.size` | `{"$omitEmpty":{"$switch":{"cases":[{"when":{"$eq":[{"$ref":"request.aspectRatio"},"1:1"]},"then":"1024*1024"},{"when":{"$eq":[{"$ref":"request.aspectRatio"},"3:4"]},"then":"960*1280"},{"when":{"$eq":[{"$ref":"request.aspectRatio"},"4:3"]},"then":"1280*960"},{"when":{"$eq":[{"$ref":"request.aspectRatio"},"2:3"]},"then":"1024*1536"},{"when":{"$eq":[{"$ref":"request.aspectRatio"},"3:2"]},"then":"1536*1024"},{"when":{"$eq":[{"$ref":"request.aspectRatio"},"9:16"]},"then":"864*1536"},{"when":{"$eq":[{"$ref":"request.aspectRatio"},"16:9"]},"then":"1536*864"},{"when":{"$eq":[{"$ref":"request.aspectRatio"},"1024x1024"]},"then":"1024*1024"},{"when":{"$eq":[{"$ref":"request.aspectRatio"},"1024x1536"]},"then":"1024*1536"},{"when":{"$eq":[{"$ref":"request.aspectRatio"},"1536x1024"]},"then":"1536*1024"},{"when":{"$eq":[{"$ref":"request.aspectRatio"},"1024x1280"]},"then":"1024*1280"},{"when":{"$eq":[{"$ref":"request.aspectRatio"},"1280x1024"]},"then":"1280*1024"},{"when":{"$eq":[{"$ref":"request.aspectRatio"},"960x1280"]},"then":"960*1280"},{"when":{"$eq":[{"$ref":"request.aspectRatio"},"1280x960"]},"then":"1280*960"}],"default":null}}}` |
+| `create.body.parameters.size` | `{"$omitEmpty":{"$switch":{"cases":[{"when":{"$eq":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"1:1"]},"then":"1024*1024"},{"when":{"$eq":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"3:4"]},"then":"960*1280"},{"when":{"$eq":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"4:3"]},"then":"1280*960"},{"when":{"$eq":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"2:3"]},"then":"1024*1536"},{"when":{"$eq":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"3:2"]},"then":"1536*1024"},{"when":{"$eq":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"9:16"]},"then":"864*1536"},{"when":{"$eq":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"16:9"]},"then":"1536*864"}],"default":{"$if":{"condition":{"$and":[{"$eq":[{"$len":{"$if":{"condition":{"$eq":[{"$len":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"x"]}},2]},"then":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"x"]},"else":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"*"]}}}},2]},{"$gt":[{"$toInt":{"$trim":{"$at":[{"$if":{"condition":{"$eq":[{"$len":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"x"]}},2]},"then":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"x"]},"else":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"*"]}}},0]}}},0]},{"$gt":[{"$toInt":{"$trim":{"$at":[{"$if":{"condition":{"$eq":[{"$len":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"x"]}},2]},"then":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"x"]},"else":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"*"]}}},1]}}},0]},{"$eq":[{"$trim":{"$at":[{"$if":{"condition":{"$eq":[{"$len":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"x"]}},2]},"then":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"x"]},"else":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"*"]}}},0]}},{"$toString":{"$toInt":{"$trim":{"$at":[{"$if":{"condition":{"$eq":[{"$len":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"x"]}},2]},"then":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"x"]},"else":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"*"]}}},0]}}}}]},{"$eq":[{"$trim":{"$at":[{"$if":{"condition":{"$eq":[{"$len":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"x"]}},2]},"then":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"x"]},"else":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"*"]}}},1]}},{"$toString":{"$toInt":{"$trim":{"$at":[{"$if":{"condition":{"$eq":[{"$len":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"x"]}},2]},"then":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"x"]},"else":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"*"]}}},1]}}}}]}]},"then":{"$concat":[{"$trim":{"$at":[{"$if":{"condition":{"$eq":[{"$len":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"x"]}},2]},"then":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"x"]},"else":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"*"]}}},0]}},"*",{"$trim":{"$at":[{"$if":{"condition":{"$eq":[{"$len":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"x"]}},2]},"then":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"x"]},"else":{"$split":[{"$lower":{"$trim":{"$ref":"request.aspectRatio"}}},"*"]}}},1]}}]},"else":null}}}}}` |
 | `create.body.parameters.n` | `{"$if":{"condition":{"$gt":[{"$toInt":{"$ref":"request.imageCount"}},0]},"then":{"$toInt":{"$ref":"request.imageCount"}},"else":1}}` |
 | `create.body.parameters.prompt_extend` | `true` |
 | `create.body.parameters.enable_thinking` | `false` |
@@ -80,7 +80,7 @@
 
 ## 兼容边界
 
-百炼多模态图像端点（image-generation 异步任务）。文生图与图生图共用同一入口：不传 image 为文生图，传 1-3 张 image 为图生图。参考图通过 input.messages[].content[].image 传输（优先 Base64 data URL），不使用 OpenAI 的 /v1/images/edits multipart。size 采用“宽*高”，未登记的档位省略并由模型自动推荐；enable_thinking 固定为 false，因为官方要求非流式调用关闭思考模式。
+百炼多模态图像端点（image-generation 异步任务）。文生图与图生图共用同一入口。参考图通过 input.messages[].content[].image 传输（优先 Base64 data URL），不使用 OpenAI 的 /v1/images/edits multipart。size 采用“宽*高”，后台允许的像素尺寸转换后保留，空值或 auto 才省略；无效格式明确报错。实际尺寸范围以所选上游模型为准。enable_thinking 固定为 false，因为官方要求非流式调用关闭思考模式。
 
 <!-- YINGCE_MANIFEST_CONTRACT_START -->
 ## Manifest 完整接口定义
@@ -92,8 +92,8 @@
   "apiVersion": "yingce.plugin/v2",
   "id": "dashscope-qwen-image",
   "name": "DashScope Qwen / Wan Image",
-  "version": "2.0.0",
-  "author": "Alibaba Cloud / 影策",
+  "version": "2.0.1",
+  "author": "Alibaba Cloud / 绘幕",
   "description": "DashScope Qwen / Wan Image 独立请求协议插件。",
   "documentation": "<当前插件的完整 documentation，由 README.md 与 docs/interface.md 拼接而成；为避免 JSON 递归，此处不重复展开正文。>",
   "permissions": [
@@ -189,6 +189,449 @@
             "description": "插件命名空间内的厂商扩展字段。"
           }
         ],
+        "validations": [
+          {
+            "assert": {
+              "$or": [
+                {
+                  "$in": [
+                    {
+                      "$lower": {
+                        "$trim": {
+                          "$ref": "request.aspectRatio"
+                        }
+                      }
+                    },
+                    [
+                      "",
+                      "auto",
+                      "1:1",
+                      "3:4",
+                      "4:3",
+                      "2:3",
+                      "3:2",
+                      "9:16",
+                      "16:9"
+                    ]
+                  ]
+                },
+                {
+                  "$and": [
+                    {
+                      "$eq": [
+                        {
+                          "$len": {
+                            "$if": {
+                              "condition": {
+                                "$eq": [
+                                  {
+                                    "$len": {
+                                      "$split": [
+                                        {
+                                          "$lower": {
+                                            "$trim": {
+                                              "$ref": "request.aspectRatio"
+                                            }
+                                          }
+                                        },
+                                        "x"
+                                      ]
+                                    }
+                                  },
+                                  2
+                                ]
+                              },
+                              "then": {
+                                "$split": [
+                                  {
+                                    "$lower": {
+                                      "$trim": {
+                                        "$ref": "request.aspectRatio"
+                                      }
+                                    }
+                                  },
+                                  "x"
+                                ]
+                              },
+                              "else": {
+                                "$split": [
+                                  {
+                                    "$lower": {
+                                      "$trim": {
+                                        "$ref": "request.aspectRatio"
+                                      }
+                                    }
+                                  },
+                                  "*"
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        2
+                      ]
+                    },
+                    {
+                      "$gt": [
+                        {
+                          "$toInt": {
+                            "$trim": {
+                              "$at": [
+                                {
+                                  "$if": {
+                                    "condition": {
+                                      "$eq": [
+                                        {
+                                          "$len": {
+                                            "$split": [
+                                              {
+                                                "$lower": {
+                                                  "$trim": {
+                                                    "$ref": "request.aspectRatio"
+                                                  }
+                                                }
+                                              },
+                                              "x"
+                                            ]
+                                          }
+                                        },
+                                        2
+                                      ]
+                                    },
+                                    "then": {
+                                      "$split": [
+                                        {
+                                          "$lower": {
+                                            "$trim": {
+                                              "$ref": "request.aspectRatio"
+                                            }
+                                          }
+                                        },
+                                        "x"
+                                      ]
+                                    },
+                                    "else": {
+                                      "$split": [
+                                        {
+                                          "$lower": {
+                                            "$trim": {
+                                              "$ref": "request.aspectRatio"
+                                            }
+                                          }
+                                        },
+                                        "*"
+                                      ]
+                                    }
+                                  }
+                                },
+                                0
+                              ]
+                            }
+                          }
+                        },
+                        0
+                      ]
+                    },
+                    {
+                      "$gt": [
+                        {
+                          "$toInt": {
+                            "$trim": {
+                              "$at": [
+                                {
+                                  "$if": {
+                                    "condition": {
+                                      "$eq": [
+                                        {
+                                          "$len": {
+                                            "$split": [
+                                              {
+                                                "$lower": {
+                                                  "$trim": {
+                                                    "$ref": "request.aspectRatio"
+                                                  }
+                                                }
+                                              },
+                                              "x"
+                                            ]
+                                          }
+                                        },
+                                        2
+                                      ]
+                                    },
+                                    "then": {
+                                      "$split": [
+                                        {
+                                          "$lower": {
+                                            "$trim": {
+                                              "$ref": "request.aspectRatio"
+                                            }
+                                          }
+                                        },
+                                        "x"
+                                      ]
+                                    },
+                                    "else": {
+                                      "$split": [
+                                        {
+                                          "$lower": {
+                                            "$trim": {
+                                              "$ref": "request.aspectRatio"
+                                            }
+                                          }
+                                        },
+                                        "*"
+                                      ]
+                                    }
+                                  }
+                                },
+                                1
+                              ]
+                            }
+                          }
+                        },
+                        0
+                      ]
+                    },
+                    {
+                      "$eq": [
+                        {
+                          "$trim": {
+                            "$at": [
+                              {
+                                "$if": {
+                                  "condition": {
+                                    "$eq": [
+                                      {
+                                        "$len": {
+                                          "$split": [
+                                            {
+                                              "$lower": {
+                                                "$trim": {
+                                                  "$ref": "request.aspectRatio"
+                                                }
+                                              }
+                                            },
+                                            "x"
+                                          ]
+                                        }
+                                      },
+                                      2
+                                    ]
+                                  },
+                                  "then": {
+                                    "$split": [
+                                      {
+                                        "$lower": {
+                                          "$trim": {
+                                            "$ref": "request.aspectRatio"
+                                          }
+                                        }
+                                      },
+                                      "x"
+                                    ]
+                                  },
+                                  "else": {
+                                    "$split": [
+                                      {
+                                        "$lower": {
+                                          "$trim": {
+                                            "$ref": "request.aspectRatio"
+                                          }
+                                        }
+                                      },
+                                      "*"
+                                    ]
+                                  }
+                                }
+                              },
+                              0
+                            ]
+                          }
+                        },
+                        {
+                          "$toString": {
+                            "$toInt": {
+                              "$trim": {
+                                "$at": [
+                                  {
+                                    "$if": {
+                                      "condition": {
+                                        "$eq": [
+                                          {
+                                            "$len": {
+                                              "$split": [
+                                                {
+                                                  "$lower": {
+                                                    "$trim": {
+                                                      "$ref": "request.aspectRatio"
+                                                    }
+                                                  }
+                                                },
+                                                "x"
+                                              ]
+                                            }
+                                          },
+                                          2
+                                        ]
+                                      },
+                                      "then": {
+                                        "$split": [
+                                          {
+                                            "$lower": {
+                                              "$trim": {
+                                                "$ref": "request.aspectRatio"
+                                              }
+                                            }
+                                          },
+                                          "x"
+                                        ]
+                                      },
+                                      "else": {
+                                        "$split": [
+                                          {
+                                            "$lower": {
+                                              "$trim": {
+                                                "$ref": "request.aspectRatio"
+                                              }
+                                            }
+                                          },
+                                          "*"
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  0
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "$eq": [
+                        {
+                          "$trim": {
+                            "$at": [
+                              {
+                                "$if": {
+                                  "condition": {
+                                    "$eq": [
+                                      {
+                                        "$len": {
+                                          "$split": [
+                                            {
+                                              "$lower": {
+                                                "$trim": {
+                                                  "$ref": "request.aspectRatio"
+                                                }
+                                              }
+                                            },
+                                            "x"
+                                          ]
+                                        }
+                                      },
+                                      2
+                                    ]
+                                  },
+                                  "then": {
+                                    "$split": [
+                                      {
+                                        "$lower": {
+                                          "$trim": {
+                                            "$ref": "request.aspectRatio"
+                                          }
+                                        }
+                                      },
+                                      "x"
+                                    ]
+                                  },
+                                  "else": {
+                                    "$split": [
+                                      {
+                                        "$lower": {
+                                          "$trim": {
+                                            "$ref": "request.aspectRatio"
+                                          }
+                                        }
+                                      },
+                                      "*"
+                                    ]
+                                  }
+                                }
+                              },
+                              1
+                            ]
+                          }
+                        },
+                        {
+                          "$toString": {
+                            "$toInt": {
+                              "$trim": {
+                                "$at": [
+                                  {
+                                    "$if": {
+                                      "condition": {
+                                        "$eq": [
+                                          {
+                                            "$len": {
+                                              "$split": [
+                                                {
+                                                  "$lower": {
+                                                    "$trim": {
+                                                      "$ref": "request.aspectRatio"
+                                                    }
+                                                  }
+                                                },
+                                                "x"
+                                              ]
+                                            }
+                                          },
+                                          2
+                                        ]
+                                      },
+                                      "then": {
+                                        "$split": [
+                                          {
+                                            "$lower": {
+                                              "$trim": {
+                                                "$ref": "request.aspectRatio"
+                                              }
+                                            }
+                                          },
+                                          "x"
+                                        ]
+                                      },
+                                      "else": {
+                                        "$split": [
+                                          {
+                                            "$lower": {
+                                              "$trim": {
+                                                "$ref": "request.aspectRatio"
+                                              }
+                                            }
+                                          },
+                                          "*"
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  1
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            "message": "图片尺寸格式无法转换，请选择像素尺寸（例如 1824x1024）或自动，不会自动忽略已选尺寸。"
+          }
+        ],
         "create": {
           "method": "POST",
           "path": "/api/v1/services/aigc/image-generation/generation",
@@ -246,7 +689,11 @@
                         "when": {
                           "$eq": [
                             {
-                              "$ref": "request.aspectRatio"
+                              "$lower": {
+                                "$trim": {
+                                  "$ref": "request.aspectRatio"
+                                }
+                              }
                             },
                             "1:1"
                           ]
@@ -257,7 +704,11 @@
                         "when": {
                           "$eq": [
                             {
-                              "$ref": "request.aspectRatio"
+                              "$lower": {
+                                "$trim": {
+                                  "$ref": "request.aspectRatio"
+                                }
+                              }
                             },
                             "3:4"
                           ]
@@ -268,7 +719,11 @@
                         "when": {
                           "$eq": [
                             {
-                              "$ref": "request.aspectRatio"
+                              "$lower": {
+                                "$trim": {
+                                  "$ref": "request.aspectRatio"
+                                }
+                              }
                             },
                             "4:3"
                           ]
@@ -279,7 +734,11 @@
                         "when": {
                           "$eq": [
                             {
-                              "$ref": "request.aspectRatio"
+                              "$lower": {
+                                "$trim": {
+                                  "$ref": "request.aspectRatio"
+                                }
+                              }
                             },
                             "2:3"
                           ]
@@ -290,7 +749,11 @@
                         "when": {
                           "$eq": [
                             {
-                              "$ref": "request.aspectRatio"
+                              "$lower": {
+                                "$trim": {
+                                  "$ref": "request.aspectRatio"
+                                }
+                              }
                             },
                             "3:2"
                           ]
@@ -301,7 +764,11 @@
                         "when": {
                           "$eq": [
                             {
-                              "$ref": "request.aspectRatio"
+                              "$lower": {
+                                "$trim": {
+                                  "$ref": "request.aspectRatio"
+                                }
+                              }
                             },
                             "9:16"
                           ]
@@ -312,92 +779,548 @@
                         "when": {
                           "$eq": [
                             {
-                              "$ref": "request.aspectRatio"
+                              "$lower": {
+                                "$trim": {
+                                  "$ref": "request.aspectRatio"
+                                }
+                              }
                             },
                             "16:9"
                           ]
                         },
                         "then": "1536*864"
-                      },
-                      {
-                        "when": {
-                          "$eq": [
-                            {
-                              "$ref": "request.aspectRatio"
-                            },
-                            "1024x1024"
-                          ]
-                        },
-                        "then": "1024*1024"
-                      },
-                      {
-                        "when": {
-                          "$eq": [
-                            {
-                              "$ref": "request.aspectRatio"
-                            },
-                            "1024x1536"
-                          ]
-                        },
-                        "then": "1024*1536"
-                      },
-                      {
-                        "when": {
-                          "$eq": [
-                            {
-                              "$ref": "request.aspectRatio"
-                            },
-                            "1536x1024"
-                          ]
-                        },
-                        "then": "1536*1024"
-                      },
-                      {
-                        "when": {
-                          "$eq": [
-                            {
-                              "$ref": "request.aspectRatio"
-                            },
-                            "1024x1280"
-                          ]
-                        },
-                        "then": "1024*1280"
-                      },
-                      {
-                        "when": {
-                          "$eq": [
-                            {
-                              "$ref": "request.aspectRatio"
-                            },
-                            "1280x1024"
-                          ]
-                        },
-                        "then": "1280*1024"
-                      },
-                      {
-                        "when": {
-                          "$eq": [
-                            {
-                              "$ref": "request.aspectRatio"
-                            },
-                            "960x1280"
-                          ]
-                        },
-                        "then": "960*1280"
-                      },
-                      {
-                        "when": {
-                          "$eq": [
-                            {
-                              "$ref": "request.aspectRatio"
-                            },
-                            "1280x960"
-                          ]
-                        },
-                        "then": "1280*960"
                       }
                     ],
-                    "default": null
+                    "default": {
+                      "$if": {
+                        "condition": {
+                          "$and": [
+                            {
+                              "$eq": [
+                                {
+                                  "$len": {
+                                    "$if": {
+                                      "condition": {
+                                        "$eq": [
+                                          {
+                                            "$len": {
+                                              "$split": [
+                                                {
+                                                  "$lower": {
+                                                    "$trim": {
+                                                      "$ref": "request.aspectRatio"
+                                                    }
+                                                  }
+                                                },
+                                                "x"
+                                              ]
+                                            }
+                                          },
+                                          2
+                                        ]
+                                      },
+                                      "then": {
+                                        "$split": [
+                                          {
+                                            "$lower": {
+                                              "$trim": {
+                                                "$ref": "request.aspectRatio"
+                                              }
+                                            }
+                                          },
+                                          "x"
+                                        ]
+                                      },
+                                      "else": {
+                                        "$split": [
+                                          {
+                                            "$lower": {
+                                              "$trim": {
+                                                "$ref": "request.aspectRatio"
+                                              }
+                                            }
+                                          },
+                                          "*"
+                                        ]
+                                      }
+                                    }
+                                  }
+                                },
+                                2
+                              ]
+                            },
+                            {
+                              "$gt": [
+                                {
+                                  "$toInt": {
+                                    "$trim": {
+                                      "$at": [
+                                        {
+                                          "$if": {
+                                            "condition": {
+                                              "$eq": [
+                                                {
+                                                  "$len": {
+                                                    "$split": [
+                                                      {
+                                                        "$lower": {
+                                                          "$trim": {
+                                                            "$ref": "request.aspectRatio"
+                                                          }
+                                                        }
+                                                      },
+                                                      "x"
+                                                    ]
+                                                  }
+                                                },
+                                                2
+                                              ]
+                                            },
+                                            "then": {
+                                              "$split": [
+                                                {
+                                                  "$lower": {
+                                                    "$trim": {
+                                                      "$ref": "request.aspectRatio"
+                                                    }
+                                                  }
+                                                },
+                                                "x"
+                                              ]
+                                            },
+                                            "else": {
+                                              "$split": [
+                                                {
+                                                  "$lower": {
+                                                    "$trim": {
+                                                      "$ref": "request.aspectRatio"
+                                                    }
+                                                  }
+                                                },
+                                                "*"
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        0
+                                      ]
+                                    }
+                                  }
+                                },
+                                0
+                              ]
+                            },
+                            {
+                              "$gt": [
+                                {
+                                  "$toInt": {
+                                    "$trim": {
+                                      "$at": [
+                                        {
+                                          "$if": {
+                                            "condition": {
+                                              "$eq": [
+                                                {
+                                                  "$len": {
+                                                    "$split": [
+                                                      {
+                                                        "$lower": {
+                                                          "$trim": {
+                                                            "$ref": "request.aspectRatio"
+                                                          }
+                                                        }
+                                                      },
+                                                      "x"
+                                                    ]
+                                                  }
+                                                },
+                                                2
+                                              ]
+                                            },
+                                            "then": {
+                                              "$split": [
+                                                {
+                                                  "$lower": {
+                                                    "$trim": {
+                                                      "$ref": "request.aspectRatio"
+                                                    }
+                                                  }
+                                                },
+                                                "x"
+                                              ]
+                                            },
+                                            "else": {
+                                              "$split": [
+                                                {
+                                                  "$lower": {
+                                                    "$trim": {
+                                                      "$ref": "request.aspectRatio"
+                                                    }
+                                                  }
+                                                },
+                                                "*"
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        1
+                                      ]
+                                    }
+                                  }
+                                },
+                                0
+                              ]
+                            },
+                            {
+                              "$eq": [
+                                {
+                                  "$trim": {
+                                    "$at": [
+                                      {
+                                        "$if": {
+                                          "condition": {
+                                            "$eq": [
+                                              {
+                                                "$len": {
+                                                  "$split": [
+                                                    {
+                                                      "$lower": {
+                                                        "$trim": {
+                                                          "$ref": "request.aspectRatio"
+                                                        }
+                                                      }
+                                                    },
+                                                    "x"
+                                                  ]
+                                                }
+                                              },
+                                              2
+                                            ]
+                                          },
+                                          "then": {
+                                            "$split": [
+                                              {
+                                                "$lower": {
+                                                  "$trim": {
+                                                    "$ref": "request.aspectRatio"
+                                                  }
+                                                }
+                                              },
+                                              "x"
+                                            ]
+                                          },
+                                          "else": {
+                                            "$split": [
+                                              {
+                                                "$lower": {
+                                                  "$trim": {
+                                                    "$ref": "request.aspectRatio"
+                                                  }
+                                                }
+                                              },
+                                              "*"
+                                            ]
+                                          }
+                                        }
+                                      },
+                                      0
+                                    ]
+                                  }
+                                },
+                                {
+                                  "$toString": {
+                                    "$toInt": {
+                                      "$trim": {
+                                        "$at": [
+                                          {
+                                            "$if": {
+                                              "condition": {
+                                                "$eq": [
+                                                  {
+                                                    "$len": {
+                                                      "$split": [
+                                                        {
+                                                          "$lower": {
+                                                            "$trim": {
+                                                              "$ref": "request.aspectRatio"
+                                                            }
+                                                          }
+                                                        },
+                                                        "x"
+                                                      ]
+                                                    }
+                                                  },
+                                                  2
+                                                ]
+                                              },
+                                              "then": {
+                                                "$split": [
+                                                  {
+                                                    "$lower": {
+                                                      "$trim": {
+                                                        "$ref": "request.aspectRatio"
+                                                      }
+                                                    }
+                                                  },
+                                                  "x"
+                                                ]
+                                              },
+                                              "else": {
+                                                "$split": [
+                                                  {
+                                                    "$lower": {
+                                                      "$trim": {
+                                                        "$ref": "request.aspectRatio"
+                                                      }
+                                                    }
+                                                  },
+                                                  "*"
+                                                ]
+                                              }
+                                            }
+                                          },
+                                          0
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "$eq": [
+                                {
+                                  "$trim": {
+                                    "$at": [
+                                      {
+                                        "$if": {
+                                          "condition": {
+                                            "$eq": [
+                                              {
+                                                "$len": {
+                                                  "$split": [
+                                                    {
+                                                      "$lower": {
+                                                        "$trim": {
+                                                          "$ref": "request.aspectRatio"
+                                                        }
+                                                      }
+                                                    },
+                                                    "x"
+                                                  ]
+                                                }
+                                              },
+                                              2
+                                            ]
+                                          },
+                                          "then": {
+                                            "$split": [
+                                              {
+                                                "$lower": {
+                                                  "$trim": {
+                                                    "$ref": "request.aspectRatio"
+                                                  }
+                                                }
+                                              },
+                                              "x"
+                                            ]
+                                          },
+                                          "else": {
+                                            "$split": [
+                                              {
+                                                "$lower": {
+                                                  "$trim": {
+                                                    "$ref": "request.aspectRatio"
+                                                  }
+                                                }
+                                              },
+                                              "*"
+                                            ]
+                                          }
+                                        }
+                                      },
+                                      1
+                                    ]
+                                  }
+                                },
+                                {
+                                  "$toString": {
+                                    "$toInt": {
+                                      "$trim": {
+                                        "$at": [
+                                          {
+                                            "$if": {
+                                              "condition": {
+                                                "$eq": [
+                                                  {
+                                                    "$len": {
+                                                      "$split": [
+                                                        {
+                                                          "$lower": {
+                                                            "$trim": {
+                                                              "$ref": "request.aspectRatio"
+                                                            }
+                                                          }
+                                                        },
+                                                        "x"
+                                                      ]
+                                                    }
+                                                  },
+                                                  2
+                                                ]
+                                              },
+                                              "then": {
+                                                "$split": [
+                                                  {
+                                                    "$lower": {
+                                                      "$trim": {
+                                                        "$ref": "request.aspectRatio"
+                                                      }
+                                                    }
+                                                  },
+                                                  "x"
+                                                ]
+                                              },
+                                              "else": {
+                                                "$split": [
+                                                  {
+                                                    "$lower": {
+                                                      "$trim": {
+                                                        "$ref": "request.aspectRatio"
+                                                      }
+                                                    }
+                                                  },
+                                                  "*"
+                                                ]
+                                              }
+                                            }
+                                          },
+                                          1
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "then": {
+                          "$concat": [
+                            {
+                              "$trim": {
+                                "$at": [
+                                  {
+                                    "$if": {
+                                      "condition": {
+                                        "$eq": [
+                                          {
+                                            "$len": {
+                                              "$split": [
+                                                {
+                                                  "$lower": {
+                                                    "$trim": {
+                                                      "$ref": "request.aspectRatio"
+                                                    }
+                                                  }
+                                                },
+                                                "x"
+                                              ]
+                                            }
+                                          },
+                                          2
+                                        ]
+                                      },
+                                      "then": {
+                                        "$split": [
+                                          {
+                                            "$lower": {
+                                              "$trim": {
+                                                "$ref": "request.aspectRatio"
+                                              }
+                                            }
+                                          },
+                                          "x"
+                                        ]
+                                      },
+                                      "else": {
+                                        "$split": [
+                                          {
+                                            "$lower": {
+                                              "$trim": {
+                                                "$ref": "request.aspectRatio"
+                                              }
+                                            }
+                                          },
+                                          "*"
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  0
+                                ]
+                              }
+                            },
+                            "*",
+                            {
+                              "$trim": {
+                                "$at": [
+                                  {
+                                    "$if": {
+                                      "condition": {
+                                        "$eq": [
+                                          {
+                                            "$len": {
+                                              "$split": [
+                                                {
+                                                  "$lower": {
+                                                    "$trim": {
+                                                      "$ref": "request.aspectRatio"
+                                                    }
+                                                  }
+                                                },
+                                                "x"
+                                              ]
+                                            }
+                                          },
+                                          2
+                                        ]
+                                      },
+                                      "then": {
+                                        "$split": [
+                                          {
+                                            "$lower": {
+                                              "$trim": {
+                                                "$ref": "request.aspectRatio"
+                                              }
+                                            }
+                                          },
+                                          "x"
+                                        ]
+                                      },
+                                      "else": {
+                                        "$split": [
+                                          {
+                                            "$lower": {
+                                              "$trim": {
+                                                "$ref": "request.aspectRatio"
+                                              }
+                                            }
+                                          },
+                                          "*"
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  1
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        "else": null
+                      }
+                    }
                   }
                 }
               },

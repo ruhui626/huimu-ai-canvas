@@ -1252,18 +1252,30 @@ add({
 // Qwen-Image 3.0 / Wan 2.7 图像属于百炼多模态模型，必须走多模态端点：
 // 用 OpenAI 的 /v1/images/generations 或 /v1/images/edits 会被网关判为“模型与端点不匹配”，
 // 官方错误码把它表现为 url error；参考图只能放在 input.messages[].content[].image。
-// size 使用 DashScope 的 “宽*高”（星号），未登记的档位直接省略，由模型按提示词自动推荐分辨率。
+// 像素尺寸由后台能力控制；这里只转换协议格式，不能把未枚举的尺寸降级为自动。
 const dashscopeMultimodalImageSizes = [
   ["1:1", "1024*1024"], ["3:4", "960*1280"], ["4:3", "1280*960"], ["2:3", "1024*1536"], ["3:2", "1536*1024"],
-  ["9:16", "864*1536"], ["16:9", "1536*864"],
-  ["1024x1024", "1024*1024"], ["1024x1536", "1024*1536"], ["1536x1024", "1536*1024"],
-  ["1024x1280", "1024*1280"], ["1280x1024", "1280*1024"], ["960x1280", "960*1280"], ["1280x960", "1280*960"]
+  ["9:16", "864*1536"], ["16:9", "1536*864"]
 ];
+const dashscopeImageSizeSource = lower(trim(ref("request.aspectRatio")));
+const dashscopeImageSizeParts = conditional(eq(len(split(dashscopeImageSizeSource, "x")), 2), split(dashscopeImageSizeSource, "x"), split(dashscopeImageSizeSource, "*"));
+const dashscopeImageWidth = trim(at(dashscopeImageSizeParts, 0));
+const dashscopeImageHeight = trim(at(dashscopeImageSizeParts, 1));
+const dashscopeImageIsPixel = and(
+  eq(len(dashscopeImageSizeParts), 2),
+  gt(toInt(dashscopeImageWidth), 0), gt(toInt(dashscopeImageHeight), 0),
+  eq(dashscopeImageWidth, { $toString: toInt(dashscopeImageWidth) }),
+  eq(dashscopeImageHeight, { $toString: toInt(dashscopeImageHeight) })
+);
 
 add({
-  id: "dashscope-qwen-image", providerId: "dashscope-qwen-image", name: "DashScope Qwen / Wan Image", vendor: "Alibaba Cloud", capability: "image",
+  id: "dashscope-qwen-image", providerId: "dashscope-qwen-image", name: "DashScope Qwen / Wan Image", vendor: "Alibaba Cloud", capability: "image", version: "2.0.1",
   baseUrl: "https://dashscope.aliyuncs.com", auth: bearer, params: imageParams, requiresPublicMediaUrls: false,
-  notes: "百炼多模态图像端点（image-generation 异步任务）。文生图与图生图共用同一入口：不传 image 为文生图，传 1-3 张 image 为图生图。参考图通过 input.messages[].content[].image 传输（优先 Base64 data URL），不使用 OpenAI 的 /v1/images/edits multipart。size 采用“宽*高”，未登记的档位省略并由模型自动推荐；enable_thinking 固定为 false，因为官方要求非流式调用关闭思考模式。",
+  notes: "百炼多模态图像端点（image-generation 异步任务）。文生图与图生图共用同一入口。参考图通过 input.messages[].content[].image 传输（优先 Base64 data URL），不使用 OpenAI 的 /v1/images/edits multipart。size 采用“宽*高”，后台允许的像素尺寸转换后保留，空值或 auto 才省略；无效格式明确报错。实际尺寸范围以所选上游模型为准。enable_thinking 固定为 false，因为官方要求非流式调用关闭思考模式。",
+  validations: [{
+    assert: { $or: [{ $in: [dashscopeImageSizeSource, ["", "auto", ...dashscopeMultimodalImageSizes.map(([ratio]) => ratio)]] }, dashscopeImageIsPixel] },
+    message: "图片尺寸格式无法转换，请选择像素尺寸（例如 1824x1024）或自动，不会自动忽略已选尺寸。"
+  }],
   create: jsonCreate("/api/v1/services/aigc/image-generation/generation", {
     model: ref("request.model"),
     input: {
@@ -1278,7 +1290,7 @@ add({
       }]
     },
     parameters: {
-      size: omit({ $switch: { cases: dashscopeMultimodalImageSizes.map(([ratio, size]) => ({ when: eq(ref("request.aspectRatio"), ratio), then: size })), default: null } }),
+      size: omit({ $switch: { cases: dashscopeMultimodalImageSizes.map(([ratio, size]) => ({ when: eq(dashscopeImageSizeSource, ratio), then: size })), default: conditional(dashscopeImageIsPixel, { $concat: [dashscopeImageWidth, "*", dashscopeImageHeight] }) } }),
       n: conditional(gt({ $toInt: ref("request.imageCount") }, 0), { $toInt: ref("request.imageCount") }, 1),
       prompt_extend: true,
       enable_thinking: false,

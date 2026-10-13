@@ -93,17 +93,48 @@ func TestDashscopeQwenImagePutsReferencesInMessageContent(t *testing.T) {
 	}
 }
 
-func TestDashscopeQwenImageOmitsUnregisteredSize(t *testing.T) {
+func TestDashscopeQwenImagePreservesExplicitSize(t *testing.T) {
 	adapter := officialPackageAdapter(t, "dashscope-qwen-image.yingce-plugin", "dashscope-qwen-image")
-	create, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
-		Model: "qwen-image-3.0-pro", Prompt: "circle", AspectRatio: "2880x2880",
-	}})
-	if err != nil {
-		t.Fatal(err)
+	for _, tc := range []struct{ input, want string }{
+		{"1824x1024", "1824*1024"}, {"2752x1536", "2752*1536"},
+		{"3840x2160", "3840*2160"}, {"1024x1824", "1024*1824"},
+		{"2880x2880", "2880*2880"}, {"1360x1024", "1360*1024"},
+		{"1600x900", "1600*900"}, {"1024x1024", "1024*1024"},
+		{" 1824X1024 ", "1824*1024"}, {"1536*864", "1536*864"},
+		{"16:9", "1536*864"}, {"9:16", "864*1536"},
+		{"auto", ""}, {"", ""},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			create, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+				Model: "qwen-image-3.0-pro", Prompt: "circle", AspectRatio: tc.input,
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			parameters, _ := manifestTestBody(t, create)["parameters"].(map[string]any)
+			got, present := parameters["size"]
+			if tc.want == "" {
+				if present {
+					t.Fatalf("auto size must be omitted: %#v", got)
+				}
+			} else if got != tc.want {
+				t.Fatalf("size = %#v, want %q", got, tc.want)
+			}
+		})
 	}
-	parameters, _ := manifestTestBody(t, create)["parameters"].(map[string]any)
-	if _, present := parameters["size"]; present {
-		t.Fatalf("parameters = %#v, 未登记的档位必须省略 size 交由模型自动推荐", parameters)
+}
+
+func TestDashscopeQwenImageRejectsInvalidSize(t *testing.T) {
+	adapter := officialPackageAdapter(t, "dashscope-qwen-image.yingce-plugin", "dashscope-qwen-image")
+	for _, size := range []string{"invalid", "0x1024", "-1x1024", "1.5x1024", "1024x", "1024xabc", "1024x1024x2", "7:5"} {
+		t.Run(size, func(t *testing.T) {
+			_, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+				Model: "wan2.7-image-pro", Prompt: "circle", AspectRatio: size,
+			}})
+			if err == nil {
+				t.Fatal("invalid explicit size must fail instead of becoming auto")
+			}
+		})
 	}
 }
 
