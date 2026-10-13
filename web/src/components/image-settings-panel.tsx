@@ -1,4 +1,7 @@
 import { ImageSizePicker } from "./image-size-picker";
+import { YouchuanImageSettingsPanel } from "./youchuan-image-settings";
+import type { YouchuanImageSettings } from "@/lib/youchuan-image";
+import { isYouchuanImageProtocol } from "@/lib/model-protocols";
 import { IMAGE_GENERATION_COUNTS } from "@/lib/image-generation-count";
 import { imageResolutionUsesQuality } from "@/lib/image-size-presets";
 import { type ReactNode } from "react";
@@ -55,9 +58,10 @@ type ImageSettingsPanelProps = {
     maxCount?: number;
     /** 局部编辑等场景需要先允许选择参数，由后端负责最终计费校验。 */
     bypassPriceGuard?: boolean;
+    onYouchuanChange?: (key: keyof YouchuanImageSettings, value: string) => void;
 };
 
-export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = true, showQuality = true, showTransparent = true, showSize = true, showCount = true, className = "w-[304px] space-y-3 rounded-2xl px-1 py-0.5", maxCount = 4, bypassPriceGuard = false }: ImageSettingsPanelProps) {
+export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = true, showQuality = true, showTransparent = true, showSize = true, showCount = true, className = "w-[304px] space-y-3 rounded-2xl px-1 py-0.5", maxCount = 4, bypassPriceGuard = false, onYouchuanChange }: ImageSettingsPanelProps) {
     const profile = mergedImageCapabilityConfig(config, config.model || config.imageModel);
     const normalized = normalizeImageValue(profile, config);
     const quality = normalized.quality;
@@ -67,6 +71,9 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
     const activeSize = normalized.size;
     const activeQualityOptions = profile.quality.values.map((value) => qualityOptions.find((item) => item.value === value) || { value, label: value });
     const priceTiers = imageModelPriceTiers(config);
+    const selectedModel = config.model || config.imageModel;
+    const channel = resolveModelChannel(config, selectedModel);
+    const protocol = channel.modelCosts?.find((item) => item.model === modelOptionName(selectedModel))?.protocol || channel.interfaceType;
 
     return (
         <ImageSettingsTheme theme={theme}>
@@ -105,7 +112,10 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                         />
                     </span>
                 </div> : null}
-                {showSize ? <ImageSizePicker profile={profile} size={activeSize} quality={quality} onChange={(size, nextQuality) => applyImageSizeSelection(onConfigChange, size, nextQuality)} /> : null}
+                {showSize ? <ImageSizePicker profile={profile} size={activeSize} quality={quality} ratioOnly={isYouchuanImageProtocol(protocol)} onChange={(size, nextQuality) => applyImageSizeSelection(onConfigChange, size, nextQuality)} /> : null}
+                {isYouchuanImageProtocol(protocol) && onYouchuanChange ? <YouchuanImageSettingsPanel config={config} protocol={protocol} model={modelOptionName(selectedModel)} onChange={onYouchuanChange} /> : null}
+                {protocol === "runninghub-youchuan-image" ? <div className="text-xs" style={{ color: theme.node.muted }}>每次一个标准任务，最多一张普通参考图；保存实际返回的全部图片，按后台整次任务报价结算。不支持手写 -- 参数。</div> : null}
+                {protocol === "youchuan-image" ? <div className="text-xs" style={{ color: theme.node.muted }}>每次一组 4 张，按一次任务计费；部分图片可能因审核无法返回。当前为标准快速生成，不支持手写 -- 参数。</div> : null}
                 {showCount && effectiveMaxCount > 1 ? (
                     <div className="space-y-2">
                         <SettingTitle color={theme.node.muted}>生成张数</SettingTitle>

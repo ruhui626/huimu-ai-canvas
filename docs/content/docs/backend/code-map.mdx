@@ -5,6 +5,16 @@ description: 从产品功能快速定位主要代码入口
 
 # 代码功能地图
 
+## 悠船图片 API
+
+- RunningHub 标准模型适配：`generate-catalog.mjs` 中 `runninghub-youchuan-image`，独立安装包与 Bearer 鉴权；复用声明式 create/poll、通用多图保存恢复和按次结算，无新增数据库表或媒体保存分支。
+- RunningHub 专项：`backend/internal/protocol/runninghub_youchuan_test.go`、`backend/internal/app/runninghub_youchuan_test.go`、共用 `youchuan_test.go` 恢复结算场景、`web/test/runninghub-youchuan.test.tsx`。前端通过 `isYouchuanImageProtocol` 共用比例及设置，按协议和版本筛选参数。
+
+- 插件源定义：`plugin-packages/generate-catalog.mjs` 中 `youchuan-image`；安装包：`plugin-packages/youchuan-image.yingce-plugin`。
+- 机构双字段鉴权：`backend/internal/app/provider_protocol_auth.go`；同源媒体下载授权：`provider_http_client.go`，跨域跳转移除机构凭据：`backend/internal/outbound/outbound.go`。
+- 结果源任务及原始序号：`provider_protocol_result.go`；复用 `task_media_recovery.go`、`task_media_storage.go`、`task_media_assets.go` 保存恢复和素材登记，不新增账务规则或数据库字段。
+- 专项测试：`backend/internal/protocol/youchuan_test.go`、`backend/internal/app/youchuan_test.go`、`web/test/model-capabilities.test.ts`。
+
 ## 自定义更新公告
 
 - 后台编辑：`web/src/pages/admin/settings/components/update-announcement-editor.tsx`；版本、排序与草稿校验：`web/src/lib/update-announcement.ts`。

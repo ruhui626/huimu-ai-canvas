@@ -385,7 +385,7 @@ export default function ChannelsPage() {
                     >
                         <Input.Password autoComplete="new-password" placeholder={editingChannel ? "留空保留原凭证" : "API Key 或 Access Key"} />
                     </Form.Item>
-                    <Form.Item name="secretKey" label={editingChannel ? `Secret Key（${channelSecretText(editingChannel)}）` : "Secret Key（可选）"} extra="仅即梦官方等 AK/SK 签名协议需要；其他渠道留空。">
+                    <Form.Item name="secretKey" label={editingChannel ? `Secret Key（${channelSecretText(editingChannel)}）` : "Secret Key（可选）"} extra="即梦等 AK/SK 协议需要。悠船：API Key 填机构标识，Secret Key 填机构授权码；其他渠道按协议要求填写。">
                         <Input.Password autoComplete="new-password" placeholder={editingChannel ? "留空保留原 Secret Key" : "IAM Secret Key"} />
                     </Form.Item>
                     <div className="mb-6">

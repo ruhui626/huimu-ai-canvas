@@ -164,13 +164,15 @@ export function useCanvasVersionHistory(projectId: string, onRestore: (snapshotI
     const download = async () => {
         if (!preview?.project || !isCurrentContext()) return;
         setExporting(true);
+        const hideLoading = message.loading({ content: "正在导出画布，请稍候…", duration: 0 });
         try {
             // Drawing strokes are not versioned; never mix today's local strokes into an old snapshot.
             await exportCanvasProjects([preview.project], `${preview.project.title}-${preview.label}`, { includeLocalDrawings: false });
-            message.success("已下载，可从画布列表导入为新画布");
+            message.success("文件已准备好，请查看浏览器下载");
         } catch (cause) {
             message.error(cause instanceof Error ? cause.message : "下载失败，请重试");
         } finally {
+            hideLoading();
             setExporting(false);
         }
     };

@@ -192,7 +192,7 @@ export function ChannelModelManager({ channel, onChanged }: { channel: ModelChan
                             {item.displayName || item.modelKey}
                         </div>
                         <div className="admin-monospace truncate text-xs text-foreground/45">{item.modelKey}</div>
-                        {item.channelLabel ? <div className="truncate text-xs text-foreground/60">渠道展示名：{item.channelLabel}</div> : null}
+                        {item.channelLabel ? <div className="truncate text-xs text-foreground/60">选项展示名：{item.channelLabel}</div> : null}
                         {item.providerModelKey && item.providerModelKey !== item.modelKey ? <div className="admin-monospace truncate text-xs text-foreground/35">上游：{item.providerModelKey}</div> : null}
                     </div>
                 </div>

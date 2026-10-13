@@ -5,6 +5,8 @@ import { resourceIdFromStorageKey, resourceStorageKey, uploadResourceFile } from
 import { createGenerationTask, waitForGenerationTask, type GenerationTask, type CreateTaskInput } from "@/services/api/task-center";
 import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
 import { grokImagePromptLimitError } from "@/lib/grok-image-prompt-limit";
+import { youchuanImageOptions } from "@/lib/youchuan-image";
+import { isYouchuanImageProtocol } from "@/lib/model-protocols";
 import { resolveGenerationWorkflowExecution, type GenerationWorkflowExecution } from "@/lib/generation-workflow-execution";
 import { isArkPlanBaseUrl } from "@/lib/seedance-video";
 import { resolveVideoOperation } from "@/lib/model-selection";
@@ -347,8 +349,9 @@ function generationMetadata(config: AiConfig, metadata?: Record<string, unknown>
         ? existing[protocol] as Record<string, unknown>
         : {};
     const defaults = modelCost?.defaultOptions && typeof modelCost.defaultOptions === "object" ? modelCost.defaultOptions : {};
-    if (!Object.keys(defaults).length && !Object.keys(namespace).length) return metadata;
-    return { ...metadata, providerOptions: { ...existing, [protocol]: { ...defaults, ...namespace } } };
+    const controls = isYouchuanImageProtocol(protocol) ? youchuanImageOptions(config, protocol, model) : {};
+    if (!Object.keys(defaults).length && !Object.keys(namespace).length && !Object.keys(controls).length) return metadata;
+    return { ...metadata, providerOptions: { ...existing, [protocol]: { ...defaults, ...namespace, ...controls } } };
 }
 
 async function prepareBackendMediaReference(media: ReferenceVideo | ReferenceAudio) {

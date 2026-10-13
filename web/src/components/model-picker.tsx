@@ -186,7 +186,7 @@ export function ModelPicker({
                             const groupCurrent = group.models.find((item) => item.models.includes(current));
                             return <button key={group.key} type="button" data-model-picker-item className={cn("canvas-model-picker-brand", groupCurrent && "is-active")} aria-pressed={Boolean(groupCurrent)} onClick={() => { setActiveGroupKey(group.key); focusMenuOption(); }}>
                                 <span className="canvas-model-picker-brand-icon"><ModelLogo icon={group.icon} size={22} /></span>
-                                <span className="canvas-model-picker-brand-copy"><strong>{group.label}</strong><small>{group.models.length} 个{group.kind === "product" ? "渠道" : "模型"}{group.scope ? ` · ${group.scope}` : ""}</small></span>
+                                <span className="canvas-model-picker-brand-copy"><strong>{group.label}</strong><small>{group.models.length} 个{group.kind === "product" ? "选项" : "模型"}{group.scope ? ` · ${group.scope}` : ""}</small></span>
                                 <ChevronDown className="canvas-model-picker-brand-arrow" aria-hidden="true" />
                             </button>;
                         })}
@@ -196,7 +196,7 @@ export function ModelPicker({
                         {optionGroups.map((group) => {
                             return <button key={group.key} type="button" className={cn("canvas-model-picker-brand", activeGroupKey === group.key && "is-active")} aria-pressed={activeGroupKey === group.key} onClick={() => setActiveGroupKey(group.key)}>
                                 <span className="canvas-model-picker-brand-icon"><ModelLogo icon={group.icon} size={22} /></span>
-                                <span className="canvas-model-picker-brand-copy"><strong>{group.label}</strong><small>{group.models.length} 个{group.kind === "product" ? "渠道" : "模型"}{group.scope ? ` · ${group.scope}` : ""}</small></span>
+                                <span className="canvas-model-picker-brand-copy"><strong>{group.label}</strong><small>{group.models.length} 个{group.kind === "product" ? "选项" : "模型"}{group.scope ? ` · ${group.scope}` : ""}</small></span>
                                 <ChevronDown className="canvas-model-picker-brand-arrow" aria-hidden="true" />
                             </button>;
                         })}
@@ -222,6 +222,8 @@ export function ModelPicker({
                                         onClick={() => {
                                             if (!model) return;
                                             onChange(model);
+                                            setOpen(false);
+                                            triggerRef.current?.focus({ preventScroll: true });
                                         }}
                                     >
                                         <ModelLabel

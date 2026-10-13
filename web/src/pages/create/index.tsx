@@ -18,6 +18,7 @@ import type { Skill } from "@/services/api/skills";
 import type { GenerationTask } from "@/services/api/task-center";
 import { loadCreationConversations, pendingCreationTaskIds, removeCreationConversationSnapshot, saveCreationConversations, updateCreationConversationSnapshot } from "@/services/creation-conversation-store";
 import { resolveModelChannel, selectableModelsByCapability, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
+import type { YouchuanImageSettings } from "@/lib/youchuan-image";
 import { useCreationPreferencesStore } from "@/stores/use-creation-preferences-store";
 import { useAssetStore, type Asset } from "@/stores/use-asset-store";
 import { useAppearanceStore } from "@/stores/use-appearance-store";
@@ -1023,6 +1024,7 @@ export default function CreatePage() {
         imageProfile,
         videoProfile,
         config: generationConfig,
+        onYouchuanChange: (key: keyof YouchuanImageSettings, value: string) => useConfigStore.getState().updateConfig(key, value),
         onModelChange: (value: string) => updateConfig(mode === "text" ? "textModel" : mode === "image" ? "imageModel" : "videoModel", value),
         ratio,
         setRatio: setComposerRatio,

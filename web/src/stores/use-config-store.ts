@@ -163,6 +163,9 @@ export type AiConfig = {
     transparentBackground: string;
     count: string;
     canvasImageCount: string;
+    youchuanStylize?: string;
+    youchuanWeird?: string;
+    youchuanChaos?: string;
 };
 
 export const CONFIG_STORE_KEY = "open_ai_canvas:ai_config_store";

@@ -198,9 +198,8 @@ func (s *Service) downloadTaskMedia(ctx context.Context, config providerConfig, 
 	if _, err = ValidateOutboundURL(url); err != nil {
 		return "", "", err
 	}
-	if sameProviderOrigin(config.BaseURL, url) {
-		applyProviderAuth(req, config)
-		ApplyOutboundHeaders(req, config.Headers)
+	if err = applyMediaDownloadAuth(req, config); err != nil {
+		return "", "", err
 	}
 	ApplyDefaultOutboundHeaders(req)
 	response, err := OutboundHTTPClient(3 * time.Minute).Do(req)

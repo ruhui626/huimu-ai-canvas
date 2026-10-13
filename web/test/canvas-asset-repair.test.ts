@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 
-import { collectCanvasMediaAssetIds, rebindInconsistentCanvasAssets, repairMissingCanvasAssets, repairMissingCanvasVideoPreviews } from "@/services/canvas-asset-repair";
+import { collectCanvasMediaAssetIds, loadMissingCanvasGenerationAssets, rebindInconsistentCanvasAssets, repairMissingCanvasAssets, repairMissingCanvasVideoPreviews } from "@/services/canvas-asset-repair";
 import { ApiError } from "@/services/api/request";
-import { useAssetStore, type Asset } from "@/stores/use-asset-store";
+import { generationAssetId, useAssetStore, type Asset } from "@/stores/use-asset-store";
+import type { GenerationTask } from "@/services/api/task-center";
 import { useCanvasStore, type CanvasProject } from "@/stores/canvas/use-canvas-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 import type { TimelineClip } from "@/types/timeline";
@@ -54,6 +55,75 @@ function timelineClip(assetId: string | undefined, storageKey: string): Timeline
 beforeEach(() => {
     useCanvasStore.setState({ projects: [] });
     useAssetStore.setState({ assets: [] });
+});
+
+describe("生成结果缺失绑定恢复", () => {
+    const task = (result: object): GenerationTask => ({ id: "task", type: "canvas_image", status: "succeeded", prompt: "", attempts: 1, createdAt: "", updatedAt: "", resultJson: JSON.stringify(result) });
+
+    test("已显示的四图与主节点按原输出恢复，保留名称、位置和主图，不新建素材", async () => {
+        const keys = ["resource:r0", "resource:r1", "resource:r2", "resource:r3"];
+        const children = keys.map((key, index) => ({ ...videoNode(`child-${index}`, undefined, key), type: CanvasNodeType.Image, metadata: { ...videoNode("", undefined, key).metadata, taskId: "task", status: "success" as const, batchRootId: "root", generationOutputCount: 1 } }));
+        const root = { ...children[2], id: "root", title: "自定义主图", position: { x: 123, y: 456 }, metadata: { ...children[2].metadata, batchRootId: undefined, isBatchRoot: true, batchChildIds: children.map((node) => node.id), primaryImageId: children[2].id, generationOutputCount: 4 } };
+        useCanvasStore.setState({ projects: [project("canvas-1", [root, ...children])] });
+        let queries = 0;
+        const ids = await Promise.all(keys.map((_, index) => generationAssetId(`materialize:task:${index}`)));
+        await loadMissingCanvasGenerationAssets(new Set(["canvas-1"]), async (requested) => {
+            expect([...requested]).toEqual(ids);
+            useAssetStore.setState({ assets: keys.map((key, index) => ({ ...videoAsset(ids[index], key), kind: "image", data: { storageKey: key, dataUrl: "/image.png", width: 1024, height: 1024, bytes: 1, mimeType: "image/png" } } as Asset)) });
+        }, async () => { queries++; return task({ images: keys.map((storageKey) => ({ storageKey, dataUrl: "/image.png" })) }); });
+        expect(queries).toBe(1);
+        expect(repairMissingCanvasAssets(new Set(["canvas-1"]), true)).toEqual({ createdAssets: 0, updatedProjects: 1 });
+        const nodes = useCanvasStore.getState().projects[0].nodes;
+        expect(nodes.map((node) => node.metadata?.assetId)).toEqual([ids[2], ...ids]);
+        expect(nodes[0]).toMatchObject({ title: root.title, position: root.position, metadata: { primaryImageId: "child-2" } });
+        await loadMissingCanvasGenerationAssets(new Set(["canvas-1"]), async () => { throw new Error("不应重复加载"); }, async () => { throw new Error("不应重复查询"); });
+    });
+
+    test.each(["video", "audio"] as const)("%s 单结果使用相同恢复流程", async (kind) => {
+        const node = videoNode("node", undefined, "resource:r0");
+        node.type = kind === "audio" ? CanvasNodeType.Audio : CanvasNodeType.Video;
+        node.metadata!.taskId = "task";
+        useCanvasStore.setState({ projects: [project("canvas-1", [node])] });
+        const expected = await generationAssetId("materialize:task:0");
+        await loadMissingCanvasGenerationAssets(new Set(["canvas-1"]), async (ids) => {
+            expect([...ids]).toEqual([expected]);
+        }, async () => task({ [kind]: { storageKey: "resource:r0", dataUrl: "/media" } }));
+    });
+
+    test("不从不匹配的任务资源推测绑定，不读取范围外画布", async () => {
+        const node = videoNode("node", undefined, "resource:changed");
+        node.metadata!.taskId = "task";
+        useCanvasStore.setState({ projects: [project("canvas-1", [node])] });
+        await loadMissingCanvasGenerationAssets(new Set(["other"]), async () => { throw new Error("不应加载"); }, async () => { throw new Error("不应查询"); });
+        await loadMissingCanvasGenerationAssets(new Set(["canvas-1"]), async () => { throw new Error("不应加载"); }, async () => task({ video: { storageKey: "resource:original", dataUrl: "/media" } }));
+        expect(node.metadata?.assetId).toBeUndefined();
+    });
+
+    test("查询或加载失败保留节点，不伪造成功或创建素材", async () => {
+        const node = videoNode("node", undefined, "resource:r0");
+        node.metadata!.taskId = "task";
+        useCanvasStore.setState({ projects: [project("canvas-1", [node])] });
+        await expect(loadMissingCanvasGenerationAssets(new Set(["canvas-1"]), async () => {}, async () => { throw new Error("offline"); })).rejects.toThrow("offline");
+        await expect(loadMissingCanvasGenerationAssets(new Set(["canvas-1"]), async () => { throw new Error("load failed"); }, async () => task({ video: { storageKey: "resource:r0", dataUrl: "/media" } }))).rejects.toThrow("load failed");
+        expect(useCanvasStore.getState().projects[0].nodes).toEqual([node]);
+        expect(useAssetStore.getState().assets).toEqual([]);
+    });
+
+    test("加载期间替换的资源不会绑定旧输出，已存在的素材无需查询任务", async () => {
+        const node = videoNode("node", undefined, "resource:r0");
+        node.metadata!.taskId = "task";
+        useCanvasStore.setState({ projects: [project("canvas-1", [node])] });
+        await loadMissingCanvasGenerationAssets(new Set(["canvas-1"]), async (ids) => {
+            useCanvasStore.getState().updateProject("canvas-1", { nodes: [{ ...node, title: "用户改名", metadata: { ...node.metadata, storageKey: "resource:replacement" } }] });
+            useAssetStore.setState({ assets: [videoAsset([...ids][0], "resource:r0")] });
+        }, async () => task({ video: { storageKey: "resource:r0", dataUrl: "/media" } }));
+        repairMissingCanvasAssets(new Set(["canvas-1"]), true);
+        expect(useCanvasStore.getState().projects[0].nodes[0]).toMatchObject({ title: "用户改名", metadata: { storageKey: "resource:replacement", assetId: undefined } });
+        useAssetStore.setState({ assets: [videoAsset("existing", "resource:replacement")] });
+        await loadMissingCanvasGenerationAssets(new Set(["canvas-1"]), async () => { throw new Error("不应加载"); }, async () => { throw new Error("不应查询"); });
+        repairMissingCanvasAssets(new Set(["canvas-1"]), true);
+        expect(useCanvasStore.getState().projects[0].nodes[0].metadata?.assetId).toBe("existing");
+    });
 });
 
 describe("repairMissingCanvasAssets 增量会话", () => {

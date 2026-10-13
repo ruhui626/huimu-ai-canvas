@@ -3,6 +3,7 @@
 import { type CanvasNodeData, CanvasNodeType } from "@/types/canvas";
 import { Video } from "lucide-react";
 import { type AiConfig, defaultConfig } from "@/stores/use-config-store";
+import { youchuanNodeSettings } from "@/lib/youchuan-image";
 import { type ModelRequirements, resolveCompatibleModel, resolveModelGenerationDefaults } from "@/lib/model-selection";
 import { canonicalGenerationMetadata } from "@/lib/canvas/generation-contract";
 import { resolveCanvasGenerationModel } from "@/lib/canvas/canvas-project-generation";
@@ -60,6 +61,7 @@ export function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mo
     return {
         ...globalConfig,
         model,
+        ...youchuanNodeSettings(globalConfig, node.metadata),
         quality: defaults.quality ?? globalConfig.quality ?? defaultConfig.quality,
         size: defaults.size ?? globalConfig.size ?? defaultConfig.size,
         transparentBackground: defaults.transparentBackground ?? "false",

@@ -22,6 +22,7 @@ import (
 
 	"yingce/backend/internal/model"
 	"yingce/backend/internal/platform"
+	"yingce/backend/internal/protocol"
 )
 
 func postGeminiJSON(ctx context.Context, config providerConfig, path string, body interface{}, target interface{}) error {
@@ -188,11 +189,28 @@ func getProviderExternalBinary(ctx context.Context, config providerConfig, rawUR
 	if err != nil {
 		return nil, "", err
 	}
-	if sameProviderOrigin(config.BaseURL, rawURL) {
-		applyProviderAuth(req, config)
-		ApplyOutboundHeaders(req, config.Headers)
+	if err := applyMediaDownloadAuth(req, config); err != nil {
+		return nil, "", err
 	}
 	return doBinary(req)
+}
+
+// Download credentials belong only to the configured origin, not arbitrary CDN URLs.
+func applyMediaDownloadAuth(req *http.Request, config providerConfig) error {
+	// RunningHub returns public temporary media URLs; only create/query need the API key.
+	if config.InterfaceType == "runninghub-youchuan-image" {
+		return nil
+	}
+	if !sameProviderOrigin(config.BaseURL, req.URL.String()) {
+		return nil
+	}
+	if config.InterfaceType == "youchuan-image" {
+		ApplyOutboundHeaders(req, config.Headers)
+		return applyProtocolAuth(req, config, protocol.ManifestAuth{Type: "youchuan", Field: "apiKey", SecretField: "secretKey"})
+	}
+	applyProviderAuth(req, config)
+	ApplyOutboundHeaders(req, config.Headers)
+	return nil
 }
 
 func sameProviderOrigin(baseURL string, rawURL string) bool {

@@ -29,6 +29,14 @@ func applyProtocolAuth(req *http.Request, config providerConfig, auth protocol.M
 	}
 	credential := protocolCredentialField(config, auth.Field)
 	switch typeName {
+	case "youchuan":
+		secret := protocolCredentialField(config, auth.SecretField)
+		if credential == "" || secret == "" {
+			return errors.New("悠船需要机构标识（API Key）和机构授权码（Secret Key）")
+		}
+		req.Header.Set("x-youchuan-app", credential)
+		req.Header.Set("x-youchuan-secret", secret)
+		return nil
 	case "none":
 		return nil
 	case "bearer":

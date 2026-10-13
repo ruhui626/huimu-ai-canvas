@@ -1,4 +1,6 @@
 import { ImageSizePicker } from "@/components/image-size-picker";
+import { YouchuanImageSettingsPanel } from "@/components/youchuan-image-settings";
+import { isYouchuanImage, type YouchuanImageSettings } from "@/lib/youchuan-image";
 import { videoSizeLabel } from "@/components/video-settings-panel";
 import { imageResolutionUsesQuality } from "@/lib/image-size-presets";
 import { createPortal } from "react-dom";
@@ -105,6 +107,7 @@ type ComposerProps = {
     videoProfile: VideoCapabilityConfig;
     imageProfile: ImageCapabilityConfig;
     config: AiConfig;
+    onYouchuanChange?: (key: keyof YouchuanImageSettings, value: string) => void;
     onModelChange: (value: string) => void;
     ratio: string;
     setRatio: (value: string) => void;
@@ -472,6 +475,8 @@ function ModePicker({ mode, onModeChange }: { mode: CreationMode; onModeChange: 
 
 function GenerationSettingsMenu(props: ComposerProps) {
     const [open, setOpen] = useState(false);
+    const selectedChannel = resolveModelChannel(props.config, props.model);
+    const selectedProtocol = selectedChannel.modelCosts?.find((item) => item.model === modelOptionName(props.model))?.protocol || selectedChannel.interfaceType;
     const activeQualityOptions = props.imageProfile.quality.values.map((value) => qualityOptions.find((item) => item.value === value) || { value, label: value.toUpperCase(), description: "模型支持的质量/分辨率" });
     const qualityLabel = activeQualityOptions.find((item) => item.value === props.quality)?.label || qualityOptions.find((item) => item.value === props.quality)?.label || props.quality || "自动";
     // 尺寸/比例/分辨率选项取同显示名分组内全部模型的并集，路由模型只决定发送参数。
@@ -497,7 +502,8 @@ function GenerationSettingsMenu(props: ComposerProps) {
     const videoRatioSupported = props.mode === "video" && ratios.length > 0;
     const summary = props.mode === "video" ? [...(videoRatioSupported ? [videoSizeLabel(props.ratio)] : []), ...(videoResolutionSupported ? [videoResolutionLabel(props.videoQuality)] : [])].join(" · ") : imageSummary;
     const panel = <div className="creation-parameter-menu">
-        {props.mode === "image" ? <ImageSizePicker profile={mergedProfile} size={props.ratio} quality={props.quality} onChange={(size, quality) => { props.setRatio(size); if (quality) props.setQuality(quality); }} /> : videoRatioSupported ? <SettingSection title="画幅" value={videoSizeLabel(props.ratio)}><div className="creation-choice-grid is-ratio">{ratios.map((value) => <button key={value} type="button" aria-pressed={value === props.ratio} className={value === props.ratio ? "is-selected" : ""} onClick={() => props.setRatio(value)}><span className="creation-ratio-preview"><span style={ratioPreviewStyle(value)} /></span><span>{videoSizeLabel(value)}</span></button>)}</div></SettingSection> : null}
+        {props.mode === "image" ? <ImageSizePicker profile={mergedProfile} size={props.ratio} quality={props.quality} ratioOnly={isYouchuanImage(props.config, props.model)} onChange={(size, quality) => { props.setRatio(size); if (quality) props.setQuality(quality); }} /> : videoRatioSupported ? <SettingSection title="画幅" value={videoSizeLabel(props.ratio)}><div className="creation-choice-grid is-ratio">{ratios.map((value) => <button key={value} type="button" aria-pressed={value === props.ratio} className={value === props.ratio ? "is-selected" : ""} onClick={() => props.setRatio(value)}><span className="creation-ratio-preview"><span style={ratioPreviewStyle(value)} /></span><span>{videoSizeLabel(value)}</span></button>)}</div></SettingSection> : null}
+        {props.mode === "image" && isYouchuanImage(props.config, props.model) && props.onYouchuanChange ? <YouchuanImageSettingsPanel config={props.config} protocol={selectedProtocol} model={modelOptionName(props.model)} onChange={props.onYouchuanChange} /> : null}
         {props.mode === "image" && referenceImageSizeValue ? <button type="button" className="creation-custom-trigger" onClick={selectReferenceImageSize}>使用参考图尺寸 · {referenceImageSizeLabel}</button> : null}
         {props.mode === "video" ? (videoResolutionSupported ? <SettingSection title="清晰度" value={videoResolutionLabel(props.videoQuality)}><div className="creation-choice-grid is-resolution">{resolutions.map((option) => <button key={option.value} type="button" aria-pressed={option.value === props.videoQuality} className={option.value === props.videoQuality ? "is-selected" : ""} onClick={() => props.setVideoQuality(option.value)}>{option.label}</button>)}</div></SettingSection> : null) : <>
 

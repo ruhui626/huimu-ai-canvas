@@ -14,6 +14,10 @@ export function isVolcengineArkImageProtocol(protocol?: string) {
     return protocol === "volcengine-ark-image" || protocol === "volcengine-ark-agent-plan-image";
 }
 
+export function isYouchuanImageProtocol(protocol?: string) {
+    return protocol === "youchuan-image" || protocol === "runninghub-youchuan-image";
+}
+
 export function isVolcengineArkVideoProtocol(protocol?: string) {
     return protocol === "volcengine-ark-video" || protocol === "volcengine-ark-agent-plan-video";
 }

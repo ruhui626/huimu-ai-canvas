@@ -1,4 +1,5 @@
 import { canonicalize } from "json-canonicalize";
+import { isRetryableCanvasSyncError } from "@/lib/canvas/canvas-sync-error";
 import { waitForUserDataSessionInitialization } from "./user-data-session-readiness";
 import { resourceFileUrl, resourceIdFromStorageKey } from "@/services/api/resources";
 import {
@@ -27,7 +28,7 @@ import type { CanvasProject } from "@/stores/canvas/use-canvas-store";
 import { clearRemoteCanvasGenerationKeys, confirmRemoteCanvasGenerationKeys, flushCanvasStorePersistence, useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useSyncProgressStore } from "@/stores/use-sync-progress-store";
 import { useCanvasHistoryStore } from "@/stores/canvas/use-canvas-history-store";
-import { repairMissingCanvasAssets, repairMissingCanvasVideoPreviews, collectCanvasMediaAssetIds, rebindInconsistentCanvasAssets, type CanvasAssetRebindResult } from "@/services/canvas-asset-repair";
+import { repairMissingCanvasAssets, loadMissingCanvasGenerationAssets, repairMissingCanvasVideoPreviews, collectCanvasMediaAssetIds, rebindInconsistentCanvasAssets, type CanvasAssetRebindResult } from "@/services/canvas-asset-repair";
 import { canvasNodeToAsset } from "@/lib/canvas/canvas-node-asset";
 import { applyAgentCanvasPatch, mergeAgentCanvasEditor, mergeThreeWayValue, type AgentCanvasPatch } from "@/lib/canvas/agent-canvas-patch";
 import { collectLocalMediaKeys, ensureRemoteResourceReferences } from "./user-data-sync-media";
@@ -42,6 +43,7 @@ let syncTimer: number | null = null;
 let syncPromise: Promise<void> | null = null;
 let syncQueued = false;
 let syncRetryAttempt = 0;
+let syncRetryAt = 0;
 let remoteOperationTail: Promise<void> = Promise.resolve();
 let subscriptionsInstalled = false;
 let acknowledgedAssets = new Map<string, Asset>();
@@ -392,6 +394,11 @@ export async function syncRemoteUserData(userId?: string | null) {
 export function installRemoteUserDataAutoSync() {
     if (subscriptionsInstalled) return;
     subscriptionsInstalled = true;
+    window.addEventListener("online", () => {
+        if (!Object.values(useSyncProgressStore.getState().syncingProjects).some((item) => item.phase === "error" && item.retryable)) return;
+        if (Date.now() < syncRetryAt) return;
+        void retryRemoteUserDataSync().catch((error) => console.warn("网络恢复后同步失败", error));
+    });
     useCanvasStore.subscribe((state, previous) => {
         if (state.projects === previous.projects) return;
         const before = new Map(previous.projects.map((project) => [project.id, project]));
@@ -400,7 +407,10 @@ export function installRemoteUserDataAutoSync() {
         if (remoteUserDataPhase === "ready") {
             for (const project of changed) {
                 if (sameCanvasContent(acknowledgedProjects.get(project.id), project)) continue;
-                if (useSyncProgressStore.getState().syncingProjects[project.id]?.phase === "conflict") continue;
+                if (useSyncProgressStore.getState().syncingProjects[project.id]?.phase === "conflict") {
+                    useSyncProgressStore.getState().setProjectProgress(project.id, { localDraftSaved: false });
+                    continue;
+                }
                 useSyncProgressStore.getState().setProjectProgress(project.id, { phase: "pending", message: "有修改等待保存" });
             }
         }
@@ -427,6 +437,7 @@ export function resetRemoteUserDataSync() {
         syncTimer = null;
     }
     syncRetryAttempt = 0;
+    syncRetryAt = 0;
     syncQueued = false;
     useSyncProgressStore.getState().clearAll();
 }
@@ -457,6 +468,7 @@ export function withRemoteUserDataSyncExclusive<T>(operation: () => Promise<T>):
 
 export function scheduleRemoteUserDataSync() {
     if (!activeRemoteUserId || remoteUserDataPhase !== "ready") return;
+    if (syncTimer && Date.now() < syncRetryAt) return;
     if (syncPromise) {
         syncQueued = true;
         return;
@@ -468,23 +480,13 @@ export function scheduleRemoteUserDataSync() {
     }, 1200);
 }
 
-function isRetryableRemoteSyncError(error: unknown) {
-    if (error instanceof ApiError) return error.retryable;
-    if (error instanceof DOMException && error.name === "AbortError") return false;
-    if (typeof error === "object" && error !== null && "permanent" in error) {
-        return (error as { permanent?: unknown }).permanent !== true;
-    }
-    // Plain errors from validation/local storage should remain visible instead of
-    // being retried indefinitely. Transport failures are normalized as ApiError.
-    return false;
-}
-
 function updateRetryProgress(delayMs: number) {
     const seconds = Math.max(1, Math.ceil(delayMs / 1_000));
     const progress = useSyncProgressStore.getState();
     for (const item of Object.values(progress.syncingProjects)) {
-        if (item.phase !== "error") continue;
+        if (item.phase !== "error" || !item.retryable) continue;
         progress.setProjectProgress(item.projectId, {
+            retryScheduled: true,
             message: `${item.message || "云端同步失败"}；${seconds} 秒后自动重试`,
         });
     }
@@ -493,19 +495,22 @@ function updateRetryProgress(delayMs: number) {
 function stopRetryProgress() {
     const progress = useSyncProgressStore.getState();
     for (const item of Object.values(progress.syncingProjects)) {
-        if (item.phase !== "error" || !item.message?.includes("自动重试")) continue;
-        progress.setProjectProgress(item.projectId, { message: "云端同步失败，请点击立即重试" });
+        if (item.phase !== "error" || !item.retryScheduled) continue;
+        progress.setProjectProgress(item.projectId, { retryScheduled: false, message: "自动重试已停止，请检查网络后点击立即重试" });
     }
 }
 
 function scheduleRemoteUserDataRetry(error: unknown) {
-    if (!isRetryableRemoteSyncError(error) || !activeRemoteUserId || remoteUserDataPhase !== "ready") return false;
+    if (!isRetryableCanvasSyncError(error) || !activeRemoteUserId || remoteUserDataPhase !== "ready") return false;
+    if (syncTimer && Date.now() < syncRetryAt) return true;
     if (syncRetryAttempt >= REMOTE_SYNC_RETRY_DELAYS_MS.length) {
         stopRetryProgress();
         return false;
     }
-    const delayMs = Math.max(REMOTE_SYNC_RETRY_DELAYS_MS[syncRetryAttempt], error instanceof ApiError ? error.retryAfterMs || 0 : 0);
+    const apiError = error instanceof ApiError ? error : error instanceof Error && error.cause instanceof ApiError ? error.cause : undefined;
+    const delayMs = Math.max(REMOTE_SYNC_RETRY_DELAYS_MS[syncRetryAttempt], apiError?.retryAfterMs || 0);
     syncRetryAttempt += 1;
+    syncRetryAt = Date.now() + delayMs;
     if (syncTimer) window.clearTimeout(syncTimer);
     updateRetryProgress(delayMs);
     syncTimer = window.setTimeout(() => {
@@ -518,6 +523,7 @@ function scheduleRemoteUserDataRetry(error: unknown) {
 /** 用户主动点击重试时重新开始退避窗口，不影响本地已保存的内容。 */
 export function retryRemoteUserDataSync(projectId?: string) {
     syncRetryAttempt = 0;
+    syncRetryAt = 0;
     if (syncTimer) {
         window.clearTimeout(syncTimer);
         syncTimer = null;
@@ -533,12 +539,12 @@ export function formatLocalSavedRemotePending(localAction: string, error: unknow
     if (error instanceof ApiError && (error.status === 409 || error.status === 428)) {
         return `${localAction}，云端同步已暂停：${detail}。请保留草稿并加载最新版本。`;
     }
-    return `${localAction}，云端同步失败：${detail}。将自动重试。`;
+    return `${localAction}，云端同步失败：${detail}。${isRetryableCanvasSyncError(error) ? "将有限重试，也可手动重试。" : "请处理问题后手动重试。"}`;
 }
 
 /** 本地写已成功、云端同步失败：排队同一幂等重试，并返回可直接展示的 warning。不得回滚本地写，也不得说成已保存到云端。 */
 export function localSavedRemotePendingMessage(localAction: string, error: unknown): string {
-    scheduleRemoteUserDataSync();
+    if (isRetryableCanvasSyncError(error)) scheduleRemoteUserDataRetry(error);
     return formatLocalSavedRemotePending(localAction, error);
 }
 
@@ -727,7 +733,35 @@ export async function saveRemoteUserDataNow(input?: string | readonly string[] |
     syncPromise = withRemoteUserDataSyncExclusive(async () => {
         requireRemoteUserDataBaseline();
         if (epoch !== sessionEpoch) throw new Error("账号已切换，已停止旧会话保存");
-        await drainRemoteUserDataChanges(options);
+        for (const project of useCanvasStore.getState().projects) {
+            if (sameCanvasContent(acknowledgedProjects.get(project.id), project)) continue;
+            if (useSyncProgressStore.getState().syncingProjects[project.id]?.phase === "error") {
+                useSyncProgressStore.getState().setProjectProgress(project.id, { phase: "saving", message: "正在重试保存" });
+            }
+        }
+        try {
+            await drainRemoteUserDataChanges(options);
+        } catch (error) {
+            if (epoch !== sessionEpoch || (error instanceof Error && error.name === "AbortError")) throw error;
+            // 素材阶段也可能失败；只有独立草稿写入成功才能声明本地已保留。
+            for (const project of useCanvasStore.getState().projects) {
+                if (sameCanvasContent(acknowledgedProjects.get(project.id), project)) continue;
+                const progress = useSyncProgressStore.getState().syncingProjects[project.id];
+                if (progress?.phase !== "conflict" && progress?.phase !== "error") {
+                    useSyncProgressStore.getState().setProjectProgress(project.id, { phase: "error", message: error instanceof Error ? error.message : "保存失败，请重试", retryable: isRetryableCanvasSyncError(error), retryScheduled: false });
+                }
+                try {
+                    const draftCount = await preserveCanvasSyncDraft(project);
+                    if (epoch !== sessionEpoch) throw error;
+                    const live = useCanvasStore.getState().openProject(project.id);
+                    useSyncProgressStore.getState().setProjectProgress(project.id, { draftCount, localDraftSaved: sameCanvasContent(live || undefined, project) });
+                } catch (draftError) {
+                    if (epoch !== sessionEpoch) throw error;
+                    useSyncProgressStore.getState().setProjectProgress(project.id, { localDraftSaved: false, message: "本地草稿保存未成功，请勿关闭页面，建议立即下载本地副本" });
+                }
+            }
+            throw error;
+        }
     });
     let syncFailed = false;
     let syncError: unknown;
@@ -735,15 +769,23 @@ export async function saveRemoteUserDataNow(input?: string | readonly string[] |
         await syncPromise;
         assertNoConflict();
         syncRetryAttempt = 0;
+        syncRetryAt = 0;
+        if (syncTimer) { window.clearTimeout(syncTimer); syncTimer = null; }
     } catch (error) {
         syncFailed = true;
         syncError = error;
     } finally {
         syncPromise = null;
-        if (syncQueued) scheduleRemoteUserDataSync();
+        if (syncQueued && !syncFailed) scheduleRemoteUserDataSync();
     }
     if (syncFailed) {
-        scheduleRemoteUserDataRetry(syncError);
+        if (epoch === sessionEpoch) {
+            if (!isRetryableCanvasSyncError(syncError)) {
+                if (syncTimer) { window.clearTimeout(syncTimer); syncTimer = null; }
+                syncRetryAt = 0;
+                stopRetryProgress();
+            } else scheduleRemoteUserDataRetry(syncError);
+        }
         throw syncError;
     }
 }
@@ -798,6 +840,9 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
             .projects.filter((project) => !sameCanvasContent(acknowledgedProjects.get(project.id), project))
             .map((project) => project.id),
     );
+    repairMissingCanvasAssets(changedProjectIds, incrementalSession);
+    // 已在保存锁内，不能调用会再次获取同一把锁的 loadAssetsForUse。
+    await loadMissingCanvasGenerationAssets(changedProjectIds, loadReferencedAssets);
     repairMissingCanvasAssets(changedProjectIds, incrementalSession);
     const currentProjects = useCanvasStore.getState().projects;
     const currentAssets = useAssetStore.getState().assets;
@@ -1022,6 +1067,8 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
             const conflict = error instanceof ApiError && error.reason !== "canvas_history_resources_missing" && (error.status === 409 || error.status === 428);
             useSyncProgressStore.getState().setProjectProgress(source.id, {
                 phase: conflict ? "conflict" : "error",
+                retryable: !conflict && isRetryableCanvasSyncError(error),
+                retryScheduled: false,
                 message: conflict ? "本地与云端存在同一字段修改，请选择保留的版本" : error instanceof Error ? error.message : "云端同步失败，等待重试",
             });
             if (conflict) {

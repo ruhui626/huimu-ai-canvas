@@ -29,6 +29,25 @@ function fixture() {
     return normalizeConfigSnapshot({ config: { ...defaultConfig, channels: systemChannelModelChannels(channels), model: "b::seedance-2.0", videoModel: "b::seedance-2.0" } }).config;
 }
 
+test("a model series groups four versions without merging selection or prices", () => {
+    const versions = [["v8.2", "V8.2"], ["v8.1", "V8.1"], ["v7", "V7"], ["niji-7", "Niji 7"]];
+    const channels = systemChannelModelChannels([{ id: "youchuan", name: "悠船", displayName: "悠船", models: versions.map(([key, label]) => ({
+        ...model(label, 600000, key, "Midjourney"), capability: "image", protocol: "youchuan-image",
+        capabilityConfig: defaultModelCapabilityConfig("youchuan-image", key),
+    })) }]);
+    const config = normalizeConfigSnapshot({ config: { ...defaultConfig, channels } }).config;
+    const groups = groupModelsForPicker(config, selectableModelsByCapability(config, "image"));
+    expect(groups).toHaveLength(1);
+    expect(groups[0].label).toBe("Midjourney");
+    expect(groups[0].models.map((item) => item.label)).toEqual(versions.map(([, label]) => label));
+    for (const [key] of versions) {
+        const value = `youchuan::${key}`;
+        expect(resolveCompatibleModel(config, value, { capability: "image" })).toBe(value);
+        expect(resolveModelRequestConfig(config, value)).toMatchObject({ channelId: "youchuan", model: key });
+        expect(config.channels[0].modelCosts?.find((item) => item.model === key)?.logicalPriceTiers?.[0].unitPriceMicrocredits).toBe(600000);
+    }
+});
+
 test("same model display name groups all channels and preserves their prices", () => {
     const config = fixture();
     const groups = groupModelsForPicker(config, selectableModelsByCapability(config, "video"));

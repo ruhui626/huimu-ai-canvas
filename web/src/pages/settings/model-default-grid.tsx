@@ -1,6 +1,7 @@
 import { AudioLines, Check, Film, Image, MessageSquareText } from "lucide-react";
 
 import { ModelIcon } from "@/components/model-picker";
+import { isDirectSystemModel, modelChannelLabel } from "@/lib/model-picker-groups";
 import { cn } from "@/lib/utils";
 import {
     filterModelsByCapability,
@@ -50,6 +51,9 @@ export function ModelDefaultGrid({ config, onChange }: { config: AiConfig; onCha
                                     const channel = resolveModelChannel(config, model);
                                     const selected = config[group.modelKey] === model;
                                     const cost = channel.modelCosts?.find((item) => item.model === modelOptionName(model));
+                                    const name = modelDisplayName(config, model);
+                                    const optionLabel = isDirectSystemModel(config, model) ? modelChannelLabel(config, model) : "";
+                                    const title = optionLabel && optionLabel !== name ? `${name} · ${optionLabel}` : name;
                                     return (
                                         <button
                                             key={model}
@@ -67,7 +71,7 @@ export function ModelDefaultGrid({ config, onChange }: { config: AiConfig; onCha
                                                     <ModelIcon config={config} model={model} />
                                                 </span>
                                                 <span className="min-w-0 flex-1">
-                                                    <span className="block truncate text-xs font-semibold">{modelDisplayName(config, model)}</span>
+                                                    <span className="block truncate text-xs font-semibold" title={title}>{title}</span>
                                                     <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-[var(--fs-tiny)] text-foreground/45">
                                                         <span className="max-w-full truncate">{channel.name || "未命名渠道"}</span>
                                                         <span className="model-default-option-scope">{channel.scope === "system" ? "系统" : "自定义"}</span>

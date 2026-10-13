@@ -134,7 +134,7 @@ async function persistCanvasNodeAsset(options: EnsureCanvasNodeAssetOptions): Pr
     return { assetId: asset.id, created, linkedToProject: true };
 }
 
-async function syncAssetToProject(assetId: string, domainProjectId: string, category?: AssetCategory, folderId?: string, signal?: AbortSignal) {
+export async function syncAssetToProject(assetId: string, domainProjectId: string, category?: AssetCategory, folderId?: string, signal?: AbortSignal) {
     throwIfAborted(signal);
     const asset = useAssetStore.getState().assets.find((candidate) => candidate.id === assetId);
     if (!asset) throw new Error("素材写入本地失败");
@@ -472,7 +472,13 @@ function generationTaskMaterializer(task: GenerationTask) {
 }
 
 export async function materializeGenerationTaskAssets(task: GenerationTask, signal?: AbortSignal): Promise<GenerationTask> {
-    return generationTaskMaterializer(task).materialize(projectGenerationTaskResult(task), signal);
+    const materialized = await generationTaskMaterializer(task).materialize(projectGenerationTaskResult(task), signal);
+    const loaded = new Set(useAssetStore.getState().assets.map((asset) => asset.id));
+    const missing = materialized.outputs?.flatMap((output) => output.materializedAssetId && !loaded.has(output.materializedAssetId) ? [output.materializedAssetId] : []) || [];
+    // 完成记录可能来自旧标签页；记录完成不代表当前增量素材库已加载输出。
+    if (missing.length) await loadAssetsForUse(missing);
+    throwIfAborted(signal);
+    return materialized;
 }
 
 export function attachGenerationTaskNode(task: GenerationTask, nodeId: string, outputIndex: number, consumer: Parameters<ReturnType<typeof generationTaskMaterializer>["attachNode"]>[3], signal?: AbortSignal) {

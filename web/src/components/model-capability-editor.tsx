@@ -1,5 +1,5 @@
-import { ImageSizePresetsEditor } from "./image-size-presets-editor";
-import { imageSizeConfigWithPresets, imageSizePresets } from "@/lib/image-size-presets";
+import { ImageRatioOnlyEditor, ImageSizePresetsEditor } from "./image-size-presets-editor";
+import { imageSizeForParameter } from "@/lib/image-size-presets";
 import { Input, InputNumber } from "antd";
 import { Switch } from "@/components/ui/base/switch";
 import { SegmentedControl } from "@/components/ui/base/segmented-control";
@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 
 import { defaultImageCapabilityConfig, defaultModelCapabilityConfig, normalizeModelCapabilityConfig, type ImageCapabilityConfig, type ModelCapabilityConfig, type TextCapabilityConfig, type VideoCapabilityConfig } from "@/lib/model-capabilities";
 import type { ModelProtocol, ModelProtocolWorkflow } from "@/lib/model-protocols";
+import { isYouchuanImageProtocol } from "@/lib/model-protocols";
 import { cleanVideoScreenSpecValues, resolveWorkflowVideoScreenSpec, updateWorkflowVideoScreenSpec } from "@/lib/video-screen-specs";
 import { VIDEO_RESOLUTION_CAPABILITY_OPTIONS } from "@/lib/video-generation-options";
 import { Select } from "@/components/ui/base/select";
@@ -438,6 +439,7 @@ function TextCapabilityEditor({ value, onChange, protocol, disabled, section }: 
 
 function ImageCapabilityEditor({ value, onChange, protocol, model, disabled, section }: Required<Pick<Props, "model" | "disabled">> & Pick<Props, "value" | "onChange" | "protocol" | "section">) {
     const profile = normalizeModelCapabilityConfig(value || { version: 1, image: defaultImageCapabilityConfig(protocol, model) }).image!;
+    const ratioOnlyValues = isYouchuanImageProtocol(protocol) ? defaultImageCapabilityConfig(protocol, model).size.values : undefined;
     const update = (patch: Partial<ImageCapabilityConfig>) => onChange?.({ version: 1, image: { ...profile, ...patch } });
     const updateReferences = (patch: Partial<ImageCapabilityConfig["references"]>) => update({ references: { ...profile.references, ...patch } });
     const updateSize = (patch: Partial<ImageCapabilityConfig["size"]>) => update({ size: { ...profile.size, ...patch } });
@@ -478,9 +480,7 @@ function ImageCapabilityEditor({ value, onChange, protocol, model, disabled, sec
                                 onChange={(value) => {
                                     const parameter = value as ImageCapabilityConfig["size"]["parameter"];
                                     updateSize(
-                                        parameter === "none"
-                                            ? { parameter, values: [], presets: undefined, default: "auto", allowCustom: false }
-                                            : imageSizeConfigWithPresets({ ...profile, size: { ...profile.size, parameter } }, imageSizePresets(profile)),
+                                        imageSizeForParameter(profile, parameter, ratioOnlyValues),
                                     );
                                 }}
                             />
@@ -488,8 +488,8 @@ function ImageCapabilityEditor({ value, onChange, protocol, model, disabled, sec
                         </div>
                         {profile.size.parameter !== "none" ? (
                             <>
-                                <ImageSizePresetsEditor profile={profile} disabled={disabled} onChange={updateSize} />
-                                <ParameterField label="允许自定义" description="允许支持值之外的尺寸" supported={profile.size.allowCustom} disabled={disabled} onChange={(allowCustom) => updateSize({ allowCustom })} />
+                                {ratioOnlyValues && profile.size.parameter === "aspect_ratio" ? <ImageRatioOnlyEditor size={profile.size} values={ratioOnlyValues} disabled={disabled} onChange={updateSize} /> : <ImageSizePresetsEditor profile={profile} disabled={disabled} onChange={updateSize} />}
+                                {!ratioOnlyValues ? <ParameterField label="允许自定义" description="允许支持值之外的尺寸" supported={profile.size.allowCustom} disabled={disabled} onChange={(allowCustom) => updateSize({ allowCustom })} /> : null}
                             </>
                         ) : null}
                     </ProtocolParameterCard>
@@ -567,14 +567,14 @@ function ImageCapabilityEditor({ value, onChange, protocol, model, disabled, sec
                         onChange={(value) => {
                             const parameter = value as ImageCapabilityConfig["size"]["parameter"];
                             updateSize(
-                                parameter === "none" ? { parameter, values: [], presets: undefined, default: "auto", allowCustom: false } : imageSizeConfigWithPresets({ ...profile, size: { ...profile.size, parameter } }, imageSizePresets(profile)),
+                                imageSizeForParameter(profile, parameter, ratioOnlyValues),
                             );
                         }}
                     />
                     {profile.size.parameter !== "none" ? (
                         <>
-                            <ImageSizePresetsEditor profile={profile} disabled={disabled} onChange={updateSize} />
-                            <ParameterField label="允许自定义" description="允许用户输入支持值之外的尺寸" supported={profile.size.allowCustom} disabled={disabled} onChange={(allowCustom) => updateSize({ allowCustom })} />
+                            {ratioOnlyValues && profile.size.parameter === "aspect_ratio" ? <ImageRatioOnlyEditor size={profile.size} values={ratioOnlyValues} disabled={disabled} onChange={updateSize} /> : <ImageSizePresetsEditor profile={profile} disabled={disabled} onChange={updateSize} />}
+                            {!ratioOnlyValues ? <ParameterField label="允许自定义" description="允许用户输入支持值之外的尺寸" supported={profile.size.allowCustom} disabled={disabled} onChange={(allowCustom) => updateSize({ allowCustom })} /> : null}
                         </>
                     ) : null}
                 </CapabilityBlock>

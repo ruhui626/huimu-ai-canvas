@@ -46,6 +46,17 @@ export function CanvasProjectCard({ project, projectName, variant = "library", r
     const editing = editingId === project.id;
     const selected = selectedIds.includes(project.id);
     const open = () => navigate(`/canvas/${project.id}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`);
+    const exportProject = async () => {
+        const hideLoading = message.loading({ content: "正在导出画布，请稍候…", duration: 0 });
+        try {
+            await exportCanvasProjects([project], project.title || "画布");
+            message.success("文件已准备好，请查看浏览器下载");
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "导出失败");
+        } finally {
+            hideLoading();
+        }
+    };
     const saveTitle = async () => {
         stopEditing();
         if (!hasRemoteUserDataSyncSession()) {
@@ -127,7 +138,7 @@ export function CanvasProjectCard({ project, projectName, variant = "library", r
                                 menu={{
                                     onClick: ({ domEvent }) => domEvent.stopPropagation(),
                                     items: [
-                                        { key: "export", icon: <Download className="size-3.5" />, label: "导出画布", onClick: () => void exportCanvasProjects([project], project.title || "画布") },
+                                        { key: "export", icon: <Download className="size-3.5" />, label: "导出画布", onClick: () => void exportProject() },
                                         { type: "divider" },
                                         { key: "delete", danger: true, icon: <Trash2 className="size-3.5" />, label: "删除", onClick: () => setDeleteIds([project.id]) },
                                     ],

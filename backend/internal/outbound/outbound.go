@@ -103,6 +103,12 @@ func OutboundHTTPClient(timeout time.Duration) *http.Client {
 			if len(via) >= maxOutboundRedirects {
 				return errors.New("外部服务重定向次数过多")
 			}
+			// Go only strips standard Authorization headers. Never forward
+			// Youchuan's custom credentials across an origin or protocol change.
+			if len(via) > 0 && (req.URL.Scheme != via[0].URL.Scheme || !strings.EqualFold(req.URL.Host, via[0].URL.Host)) {
+				req.Header.Del("x-youchuan-app")
+				req.Header.Del("x-youchuan-secret")
+			}
 			_, err := ValidateOutboundURL(req.URL.String())
 			return err
 		},

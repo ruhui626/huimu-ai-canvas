@@ -7,7 +7,7 @@ import { buildImageResolutionOptions, type ImageResolutionOption, type ImageReso
 
 import { resolveImageRequestSize, validateImageSize } from "@/services/api/image-validation";
 
-export function ImageSizePicker({ profile, size, quality, onChange }: { profile: ImageCapabilityConfig; size: string; quality?: string; onChange: (size: string, quality?: string) => void }) {
+export function ImageSizePicker({ profile, size, quality, onChange, ratioOnly = false }: { profile: ImageCapabilityConfig; size: string; quality?: string; onChange: (size: string, quality?: string) => void; ratioOnly?: boolean }) {
     const presets = imageSizePresets(profile).filter((preset) => imageTierAvailable(profile, preset.tier));
     const visibleTiers = IMAGE_RESOLUTIONS.filter((value) => presets.some((preset) => preset.tier === value));
     const [chosenTier, setChosenTier] = useState<ImageResolutionTier>("1k");
@@ -116,6 +116,19 @@ export function ImageSizePicker({ profile, size, quality, onChange }: { profile:
         }
     };
     if (profile.size.parameter === "none") return null;
+    if (ratioOnly) return <div className="image-size-picker">
+        <div className="image-size-label">宽高比</div>
+        <div className="image-size-ratios">
+            {profile.size.values.filter((value) => /^\d+:\d+$/.test(value)).map((ratio) => {
+                const [width, height] = ratio.split(":").map(Number);
+                return <button key={ratio} type="button" aria-pressed={size === ratio} onClick={() => onChange(ratio)}>
+                    <span className="image-size-ratio-icon" style={{ width: 24 * Math.min(1, width / height), height: 24 * Math.min(1, height / width) }} />
+                    <span>{ratio}</span>
+                </button>;
+            })}
+        </div>
+        <p className="image-size-hint">输出像素由模型决定，当前为标准快速生成。</p>
+    </div>;
     return (
         <div className="image-size-picker">
             {visibleTiers.length ? (

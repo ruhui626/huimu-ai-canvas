@@ -5,6 +5,20 @@ import test from "node:test";
 import { DEFAULT_VIDEO_PROMPT_MAX_CHARS, defaultModelCapabilityConfig, normalizeImageValue, normalizeVideoValue } from "../src/lib/model-capabilities.ts";
 import { imageTierAvailable } from "../src/lib/image-size-presets.ts";
 
+test("Youchuan uses one standard job and excludes unpriced options", () => {
+    for (const model of ["v8.1", "v8.2", "v7", "niji-7"]) {
+        const image = defaultModelCapabilityConfig("youchuan-image", model).image!;
+        assert.equal(image.maxOutputs, 1);
+        assert.equal(image.references.maxImages, 20);
+        assert.equal(image.references.promptMaxChars, 1024);
+        assert.equal(image.references.maskSupported, false);
+        assert.equal(image.quality.supported, false);
+        assert.equal(image.transparentBackground.supported, false);
+        assert.equal(normalizeImageValue(image, { count: "4", size: "2048x2048" }).count, "1");
+        assert.equal(image.size.default, "1:1");
+    }
+});
+
 test("text multimodal capability is not guessed from a model name", () => {
     for (const model of ["gpt-4o", "gemini-2.5-pro", "doubao-seed"]) {
         const text = defaultModelCapabilityConfig(undefined, model).text!;

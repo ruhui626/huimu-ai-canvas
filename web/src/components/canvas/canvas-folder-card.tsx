@@ -43,11 +43,14 @@ export function CanvasFolderCard({ project, projectName, onClick, onPrefetch, op
         } catch (error) { message.error(error instanceof Error ? error.message : "重命名失败"); }
     };
     const exportProject = async () => {
+        const hideLoading = message.loading({ content: "正在导出画布，请稍候…", duration: 0 });
         try {
             const fullProject = await loadCanvasProjectForEditing(project.id);
             if (!fullProject) throw new Error("画布不存在");
             await exportCanvasProjects([fullProject], project.title || "画布");
+            message.success("文件已准备好，请查看浏览器下载");
         } catch (error) { message.error(error instanceof Error ? error.message : "导出失败"); }
+        finally { hideLoading(); }
     };
 
     const handleOpenKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {

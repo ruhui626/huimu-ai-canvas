@@ -13,6 +13,7 @@ import { defaultImageParamsForModel, modelCompatibilityError, modelRequestOption
 import { resolveCanvasWorkflowProvider } from "@/lib/canvas/canvas-workflow";
 import { canonicalGenerationMetadata, nodeGenerationPrompt } from "@/lib/canvas/generation-contract";
 import type { CanvasAudioSettingKey } from "./canvas-audio-settings-popover";
+import { youchuanNodeSettings } from "@/lib/youchuan-image";
 import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import { workflowProviderPluginEnabled } from "@/lib/plugins/builtin/workflows";
 import { usePluginStore } from "@/stores/use-plugin-store";
@@ -498,6 +499,7 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
         quality: workflowParameter("quality") || normalizedImage?.quality || node.metadata?.quality || globalConfig.quality || defaultConfig.quality,
         size: normalizedImage?.size || normalizedVideo?.ratio || node.metadata?.size || globalConfig.size || defaultConfig.size,
         transparentBackground: normalizedImage?.transparentBackground || ((node.metadata?.transparentBackground || globalConfig.transparentBackground) === "true" ? "true" : "false"),
+        ...youchuanNodeSettings(globalConfig, node.metadata),
         videoSeconds: normalizedVideo?.seconds ?? normalizeVideoDuration(node.metadata?.seconds ?? globalConfig.videoSeconds ?? defaultConfig.videoSeconds),
         vquality: String(node.metadata?.vquality || globalConfig.vquality || defaultConfig.vquality),
         videoGenerateAudio: videoProfile?.generateAudio.supported ? node.metadata?.generateAudio ?? globalConfig.videoGenerateAudio ?? String(videoProfile.generateAudio.default) : "false",
@@ -569,6 +571,7 @@ function buildModelNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode
         quality: generationDefaults.quality || globalConfig.quality || defaultConfig.quality,
         size: generationDefaults.size ?? globalConfig.size ?? defaultConfig.size,
         transparentBackground: generationDefaults.transparentBackground || "false",
+        ...youchuanNodeSettings(globalConfig, node.metadata),
         videoSeconds: generationDefaults.videoSeconds ?? normalizeVideoDuration(globalConfig.videoSeconds || defaultConfig.videoSeconds),
         vquality: generationDefaults.vquality ?? normalizeVideoResolution(globalConfig.vquality || defaultConfig.vquality),
         videoGenerateAudio: videoProfile?.generateAudio.supported ? generationDefaults.videoGenerateAudio ?? String(videoProfile.generateAudio.default) : "false",

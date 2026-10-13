@@ -55,7 +55,19 @@ func finishProtocolResult(ctx context.Context, config providerConfig, mode strin
 		return nil, fmt.Errorf("声明式协议不支持生成模式 %s", mode)
 	}
 	if len(references) == 0 {
+		if config.InterfaceType == "youchuan-image" {
+			return nil, errors.New("悠船任务已结束但没有可保存的图片，请检查任务审核结果；请勿直接重复生成")
+		}
 		return nil, errors.New("声明式协议已完成但没有返回媒体地址")
+	}
+	if config.InterfaceType == "youchuan-image" && mode == "image" {
+		for index := range references {
+			references[index].Metadata = map[string]any{"youchuan": map[string]any{
+				"taskId": taskID, "imageNo": references[index].Order,
+				"model": config.Model, "channelId": config.ChannelID,
+				"returnedImages": len(references),
+			}}
+		}
 	}
 	timing := seedAudioTimingFromUsage(config, mode, result.Usage)
 	if output, handled, err := recoverProtocolMedia(ctx, config, mode, references, timing); handled {
@@ -77,6 +89,9 @@ func finishProtocolResult(ctx context.Context, config providerConfig, mode strin
 			return nil, err
 		}
 		item := map[string]interface{}{"dataUrl": dataURL(mimeType, data), "mimeType": mimeType}
+		if source := reference.Metadata["youchuan"]; source != nil {
+			item["youchuan"] = source
+		}
 		if timing != nil {
 			item["durationMs"] = timing.DurationMs
 		}

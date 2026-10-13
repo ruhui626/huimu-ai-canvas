@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { App } from "antd";
+import { useSyncProgressStore } from "@/stores/use-sync-progress-store";
 
 import { applyGenerationTaskResultToNodes, generationTaskCanReloadResource, generationTaskNodeId, generationTaskOutputsApplied, shouldRecoverCanvasImageOutputs } from "@/lib/canvas/canvas-generation-task-sync";
 import { commitCanvasGenerationResult } from "@/lib/canvas/canvas-generation-result";
@@ -516,6 +517,8 @@ export function useCanvasGeneration({ projectId, domainProjectId, projectLoaded,
             }).catch((error) => {
                 autoSavedTaskIdsRef.current.delete(saveKey);
                 if (error instanceof Error && error.name === "AbortError") return;
+                const syncPhase = useSyncProgressStore.getState().syncingProjects[projectId]?.phase;
+                if (syncPhase === "error" || syncPhase === "conflict") return;
                 message.warning({
                     key: `canvas-asset-sync:${projectId}`,
                     content: error instanceof Error ? `生成结果已保留，但项目资产同步失败：${error.message}` : "生成结果已保留，但项目资产同步失败",

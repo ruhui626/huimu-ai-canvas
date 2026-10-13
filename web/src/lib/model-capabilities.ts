@@ -1,4 +1,5 @@
 import type { ModelProtocol, ModelProtocolWorkflow } from "@/lib/model-protocols";
+import { isYouchuanImageProtocol } from "@/lib/model-protocols";
 import type { ImageResolutionOption, ImageResolutionTier } from "@/lib/image-resolution-tiers";
 import { imagePresetForRatio } from "./image-size-presets";
 import { type WorkflowVideoFieldLike, workflowImageCapabilityConfig, workflowVideoCapabilityConfig } from "./model-capabilities-workflow";
@@ -221,6 +222,20 @@ export function defaultImageCapabilityConfig(protocol?: ModelProtocol, model = "
         outputFormat: { supported: true },
         maxOutputs: 15,
     };
+    if (isYouchuanImageProtocol(protocol)) {
+        image.references = { promptMaxChars: 1024, maxImages: 20, maxImageBytes: 20 * 1024 * 1024, maskSupported: false };
+        if (protocol === "runninghub-youchuan-image") {
+            image.references.maxImages = 1;
+            image.references.promptMaxChars = model === "v8.1" ? 8130 : model === "v7" ? 8192 : 5850;
+        }
+        image.size = { parameter: "aspect_ratio", values: ["1:1", "9:16", "16:9", "3:4", "4:3", "3:2", "2:3"], default: "1:1", allowCustom: false };
+        image.quality = { supported: false, values: [], default: "auto" };
+        image.transparentBackground = { supported: false, default: false };
+        image.responseFormat = { supported: false };
+        image.outputFormat = { supported: false };
+        image.maxOutputs = 1;
+        return image;
+    }
     if (protocol === "kacang-midjourney-special" || protocol === "kacang-midjourney-v7" || protocol === "kacang-midjourney") {
         const stable = protocol === "kacang-midjourney";
         const extendedRatios = stable || protocol === "kacang-midjourney-v7";

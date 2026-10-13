@@ -112,6 +112,121 @@ function add(spec) {
   specs.push(spec);
 }
 
+const rhYouchuanOption = (name, fallback) => coalesce(ref(`request.providerOptions.runninghub-youchuan-image.${name}`), fallback);
+const rhYouchuanV81 = eq(ref("request.model"), "v8.1");
+const rhYouchuanV7 = eq(ref("request.model"), "v7");
+const rhYouchuanPromptLimit = conditional(rhYouchuanV81, 8130, conditional(rhYouchuanV7, 8192, 5850));
+add({
+  id: "runninghub-youchuan-image", providerId: "runninghub-youchuan-image", name: "RunningHub 悠船图片", vendor: "RunningHub", capability: "image", version: "2.0.0",
+  baseUrl: "https://www.runninghub.ai", auth: bearer, requiresPublicMediaUrls: true,
+  params: [
+    ["model", "string", true, "create path", "v8.1 / v8.2 / v7 分别选择 text-to-image-v81 / text-to-image-v8.2-fast / text-to-image-v7；不是请求体字段。"],
+    ["prompt", "string", true, "prompt", "自然语言，不允许手写 -- 参数；V8.1 最多 8130、V8.2 最多 5850、V7 最多 8192 字符。"],
+    ["images", "media[]", false, "imageUrl", "最多一张普通 HTTPS 参考图，每张最多 20 MiB；不开放风格或主体参考。"],
+    ["aspectRatio", "string", false, "aspectRatio", "七种常用比例，默认 1:1。"],
+    ["imageCount", "integer", false, "one job", "一次提交一个任务，保存实际返回的全部图片；后台配置整次任务价格。"],
+    ["providerOptions", "object", false, "stylize / chaos / weird", "复用悠船滑块；V8.1 不传 weird。quality 固定字符串 1，V8 系列 hd 固定 false。"],
+  ],
+  validations: [
+    { assert: { $in: [ref("request.model"), ["v8.1", "v8.2", "v7"]] }, message: "RunningHub 悠船仅支持 v8.1、v8.2、v7。" },
+    { assert: and(gte(ref("request.imageCount"), 0), lte(ref("request.imageCount"), 1)), message: "RunningHub 悠船一次只能提交一个任务。" },
+    { assert: and(gt(len(trim(ref("request.prompt"))), 0), lte(len(ref("request.prompt")), rhYouchuanPromptLimit)), message: "RunningHub 悠船提示词为空或超过当前版本长度上限。" },
+    { assert: eq(len(split(ref("request.prompt"), "--")), 1), message: "RunningHub 悠船当前仅开放标准生成，请勿手写 -- 参数。" },
+    { assert: { $in: [coalesce(ref("request.aspectRatio"), "1:1"), ["1:1", "9:16", "16:9", "3:4", "4:3", "3:2", "2:3"]] }, message: "RunningHub 悠船画面比例不受支持。" },
+    { assert: and(lte(len(ref("request.images")), 1), eq(len(ref("request.videos")), 0), eq(len(ref("request.audios")), 0)), message: "RunningHub 悠船最多使用一张普通参考图，不支持视频或音频输入。" },
+    { assert: eq(len(filter(ref("request.images"), "media", { $not: and(
+      eq(first(split(ref("media.value"), ":")), "https"),
+      ...[" ", "\n", "\r", "\t", "--"].map((separator) => eq(len(split(ref("media.value"), separator)), 1)),
+      { $in: [coalesce(ref("media.role"), "reference_image"), ["reference_image", "edit_source"]] },
+      lte(coalesce(ref("media.metadata.bytes"), 0), 20 * 1024 * 1024),
+    ) })), 0), message: "RunningHub 悠船仅支持不超过 20 MiB 的普通 HTTPS 参考图，不支持蒙版、风格或主体参考。" },
+    ...[["stylize", 100, 1000], ["chaos", 5, 100], ["weird", 50, 3000]].map(([name, fallback, maximum]) => ({
+      assert: conditional(and(rhYouchuanV81, eq(name, "weird")), true, and(gte(rhYouchuanOption(name, fallback), 0), lte(rhYouchuanOption(name, fallback), maximum), eq(rhYouchuanOption(name, fallback), toInt(rhYouchuanOption(name, fallback))))),
+      message: `RunningHub 悠船 ${name} 必须为 0 到 ${maximum} 的整数。`,
+    })),
+  ],
+  create: jsonCreate("/openapi/v2/youchuan/text-to-image-v81", {
+    prompt: trim(ref("request.prompt")), aspectRatio: coalesce(ref("request.aspectRatio"), "1:1"),
+    imageUrl: omit(first(map(sorted(ref("request.images")), "media", ref("media.value")))),
+    stylize: rhYouchuanOption("stylize", 100), chaos: rhYouchuanOption("chaos", 5),
+    weird: omit(conditional(rhYouchuanV81, null, rhYouchuanOption("weird", 50))),
+    quality: "1", hd: omit(conditional(rhYouchuanV7, null, false)),
+  }, { originPath: true, pathTemplate: conditional(rhYouchuanV81, "/openapi/v2/youchuan/text-to-image-v81", conditional(rhYouchuanV7, "/openapi/v2/youchuan/text-to-image-v7", "/openapi/v2/youchuan/text-to-image-v8.2-fast")) }),
+  poll: jsonCreate("/openapi/v2/query", { taskId: ref("taskId") }, { originPath: true }),
+  response: {
+    taskId: coalesce(ref("response.taskId"), ref("taskId")),
+    status: conditional(eq(ref("response.status"), "SUCCESS"), "succeeded", conditional(eq(ref("response.status"), "RUNNING"), "processing", conditional(eq(ref("response.status"), "QUEUED"), "pending", "failed"))),
+    message: coalesce(ref("response.errorMessage"), ref("response.message"), ref("response.msg"), ref("response.errorCode")),
+    errorPaths: ["errorCode", "code"], resultEphemeral: true,
+    images: conditional(eq(ref("response.status"), "SUCCESS"), map(filter(ref("response.results"), "item", { $in: [lower(ref("item.outputType")), ["png", "jpg", "jpeg", "webp", "gif", "avif", "bmp"]] }), "item", { url: ref("item.url") })),
+    usage: ref("response.usage"),
+  },
+  notes: "RunningHub 标准模型 API，需企业级-共享 API Key（Bearer），不是 RunningHub Workflow，也不是悠船双凭据协议。仅普通文生图和单张参考图；不开放主体、风格、高清、草图、质量升档、极速或手写参数。模型名 v8.2 对应快速接口。一次按整次任务报价，结果张数以实际返回为准，不按数组长度重复扣费；价格需管理员向 RunningHub 确认，usage 仅保留上游信息，不直接换算本站积分。结果地址有效期 24 小时，立即复用宿主保存恢复链路转存。前台上传提示 10 MB 与 API 参数表 20 MB 有差异，本适配按 API 表限制，真实请求待验证。文档：https://www.runninghub.ai/zh-cn/call-api/api-detail/2052634166820159490 、https://www.runninghub.ai/zh-cn/call-api/api-detail/2133100000000700030 、https://www.runninghub.ai/zh-cn/call-api/api-detail/2016834293520994306 。",
+});
+
+// A standard Youchuan submission is one billed job returning four images.
+// Keep raw parameter suffixes out until their capabilities and prices are exposed.
+const youchuanControls = [["stylize", 100, 1000], ["weird", 50, 3000], ["chaos", 5, 100]];
+const youchuanOption = (name, fallback) => coalesce(ref(`request.providerOptions.youchuan-image.${name}`), fallback);
+const youchuanPrompt = { $concat: [
+  ...Array.from({ length: 20 }, (_, index) => conditional(gt(len(ref("request.images")), index),
+    { $concat: [at(map(sorted(ref("request.images")), "media", ref("media.value")), index), " "] }, "")),
+  trim(ref("request.prompt")),
+  conditional(eq(ref("request.model"), "niji-7"), " --niji 7",
+    conditional(eq(ref("request.model"), "v7"), " --v 7", conditional(eq(ref("request.model"), "v8.1"), " --v 8.1", " --v 8.2"))),
+  " --fast --ar ", coalesce(ref("request.aspectRatio"), "1:1"),
+  ...youchuanControls.flatMap(([name, fallback]) => [` --${name} `, youchuanOption(name, fallback)]),
+] };
+add({
+  id: "youchuan-image", providerId: "youchuan-image", name: "悠船图片", vendor: "悠船", capability: "image", version: "2.1.0",
+  baseUrl: "https://ali.youchuan.cn", requiresPublicMediaUrls: true,
+  auth: { type: "youchuan", field: "apiKey", secretField: "secretKey" },
+  configuration: { fields: [
+    { name: "apiKey", type: "secret", label: "机构标识（x-youchuan-app）", required: true },
+    { name: "secretKey", type: "secret", label: "机构授权码（x-youchuan-secret）", required: true },
+  ] },
+  params: [
+    ["model", "string", true, "text: --v / --niji", "v8.1、v8.2、v7、niji-7；不是上游 JSON model 字段。"],
+    ["providerOptions", "object", false, "text: --stylize / --weird / --chaos", "youchuan-image 命名空间：stylize 0–1000 默认100，weird 0–3000 平台默认50，chaos 0–100 平台默认5，均为整数。"],
+    ["prompt", "string", true, "text", "自然语言提示词，最多 1024 字；第一阶段不允许手写 -- 参数。"],
+    ["images", "media[]", false, "text 前置 URL", "最多 20 张普通 HTTPS 参考图，不支持蒙版、角色或风格专用引用。"],
+    ["aspectRatio", "string", false, "text: --ar", "画面比例，默认 1:1。"],
+    ["imageCount", "integer", false, "一次标准任务", "只能提交一组，通常返回四张；全部保存，按一次任务计费。"],
+  ],
+  validations: [
+    { assert: { $in: [ref("request.model"), ["v8.1", "v8.2", "v7", "niji-7"]] }, message: "悠船模型名仅支持 v8.1、v8.2、v7、niji-7。" },
+    ...youchuanControls.map(([name, fallback, maximum]) => ({
+      assert: and(gte(youchuanOption(name, fallback), 0), lte(youchuanOption(name, fallback), maximum), eq(youchuanOption(name, fallback), { $toInt: youchuanOption(name, fallback) })),
+      message: `悠船 ${name} 必须为 0 到 ${maximum} 的整数。`,
+    })),
+    { assert: and(gte(ref("request.imageCount"), 0), lte(ref("request.imageCount"), 1)), message: "悠船一次提交一组（通常四张），不能重复批量提交。" },
+    { assert: and(gt(len(trim(ref("request.prompt"))), 0), lte(len(ref("request.prompt")), 1024)), message: "悠船提示词须为 1 到 1024 字符。" },
+    { assert: eq(len(split(ref("request.prompt"), "--")), 1), message: "悠船第一阶段不支持手写 -- 参数，请通过模型与比例设置选择；暂不开放高清、草图或极速模式。" },
+    { assert: { $in: [coalesce(ref("request.aspectRatio"), "1:1"), ["1:1", "3:2", "2:3", "4:3", "3:4", "4:5", "5:4", "16:9", "9:16", "21:9"]] }, message: "悠船当前比例不受支持，请重新选择画面比例。" },
+    { assert: and(lte(len(ref("request.images")), 20), eq(len(ref("request.videos")), 0), eq(len(ref("request.audios")), 0)), message: "悠船图片仅支持最多 20 张参考图，不支持视频或音频输入。" },
+    { assert: eq(len(filter(ref("request.images"), "media", { $not: and(
+      eq(first(split(ref("media.value"), ":")), "https"),
+      ...[" ", "\n", "\r", "\t", "--"].map((separator) => eq(len(split(ref("media.value"), separator)), 1)),
+      { $in: [coalesce(ref("media.role"), "reference_image"), ["reference_image", "edit_source"]] },
+    ) })), 0), message: "悠船仅支持普通 HTTPS 参考图，地址不能包含空白或 -- 参数，不支持蒙版及专用引用。" },
+    { assert: lte(len(youchuanPrompt), 8192), message: "悠船请求含参考图地址后超过 8192 字符，请减少参考图。" },
+  ],
+  create: jsonCreate("/v1/tob/diffusion", { text: youchuanPrompt }),
+  poll: { method: "GET", path: "/v1/tob/job/{{taskId}}" },
+  response: {
+    taskId: coalesce(ref("response.id"), ref("taskId")),
+    status: conditional(eq(ref("response.status"), 1), "processing", conditional(eq(ref("response.status"), 2), "succeeded", "failed")),
+    message: coalesce(ref("response.message"), ref("response.comment"), "悠船返回未知状态"),
+    errorPaths: ["code"], resultEphemeral: true,
+    images: conditional(and(eq(ref("response.status"), 2), lte(len(ref("response.urls")), 4)), map(ref("response.urls"), "image", {
+      url: conditional({ $not: at(ref("response.audits"), ref("imageIndex")) }, ref("image")),
+      id: coalesce(ref("response.id"), ref("taskId")), order: ref("imageIndex"),
+    }), []),
+    usage: { audits: ref("response.audits"), feeCost: ref("response.cost.feeCost") },
+  },
+  notes: "第一阶段仅标准快速生图与普通参考图；一次任务通常四张，配置按次价格（整组），不按图片张数重复收费。API Key 填机构标识、Secret Key 填机构授权码。不开放手写 -- 参数、高清、草图、极速、指令编辑或视频。部分审核失败只保存通过审核的图片，保留原始序号；全部为空则报错。图片结果只保留 30 天，须保存到本站。下载仅对配置的同源地址发送授权，跨域使用上游已授权 URL，不向第三方泄露机构授权码；真实账号的文件下载方式仍需联调确认。官方文档：https://tob.youchuan.cn/docs/guides/quickstart ，https://tob.youchuan.cn/docs/price 。",
+});
+
 add({
   id: "openai-chat-completions", providerId: "chat-completion", name: "OpenAI Chat Completions", vendor: "OpenAI", capability: "text",
   baseUrl: "https://api.openai.com", auth: bearer, params: textParams,

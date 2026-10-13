@@ -7,6 +7,9 @@ export type SyncProjectProgress = {
     phase: "pending" | "uploading" | "saving" | "reconciling" | "done" | "error" | "conflict";
     message?: string;
     draftCount?: number;
+    localDraftSaved?: boolean;
+    retryable?: boolean;
+    retryScheduled?: boolean;
 };
 
 type SyncProgressStore = {
@@ -35,7 +38,11 @@ export const useSyncProgressStore = create<SyncProgressStore>((set, get) => ({
             return {
                 syncingProjects: {
                     ...state.syncingProjects,
-                    [projectId]: { ...current, ...patch },
+                    [projectId]: {
+                        ...current,
+                        ...(patch.phase && patch.phase !== "error" && patch.phase !== "conflict" ? { localDraftSaved: false, retryable: false, retryScheduled: false } : {}),
+                        ...patch,
+                    },
                 },
             };
         }),

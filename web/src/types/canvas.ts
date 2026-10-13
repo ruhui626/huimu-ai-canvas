@@ -301,6 +301,9 @@ export type CanvasNodeMetadata = {
     audioSpeed?: string;
     audioSampleRate?: string;
     audioPitch?: string;
+    youchuanStylize?: string;
+    youchuanWeird?: string;
+    youchuanChaos?: string;
     audioVolume?: string;
     audioLanguage?: string;
     audioDialect?: string;

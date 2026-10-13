@@ -1,5 +1,6 @@
 import { type GenerationTask } from "@/services/api/task-center";
 import { normalizeImageGenerationCount } from "@/lib/image-generation-count";
+import { isYouchuanImage, youchuanNodeSettings } from "@/lib/youchuan-image";
 import { backendProviderConfig, logicalModelIDForConfig, runBackendGenerationTask, type GenerationTaskDependencies } from "@/services/api/generation-task";
 import { configuredModelMatchesCapability, defaultConfig, normalizeModelOptionValue, normalizeRunningHubCapability, resolveModelRequestConfig, type AiConfig, type WorkflowFieldMapping } from "@/stores/use-config-store";
 import { resolveImageUrl, uploadImage } from "@/services/image-storage";
@@ -205,6 +206,7 @@ export function buildImageGenerationMetadata(type: CanvasImageGenerationType, co
         size: config.size,
         quality: config.quality,
         transparentBackground: config.transparentBackground,
+        ...(isYouchuanImage(config) ? youchuanNodeSettings(config) : {}),
         count,
         references: references.map(referenceUrl).filter((url): url is string => Boolean(url)),
     };
@@ -520,6 +522,7 @@ export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | u
     };
     return {
         ...requestedConfig,
+        ...youchuanNodeSettings(config, node?.metadata),
         taskWorkflowProvider: workflowProvider,
         runningHub,
         model,

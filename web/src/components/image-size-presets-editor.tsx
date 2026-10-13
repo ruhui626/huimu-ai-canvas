@@ -7,6 +7,28 @@ import type { ImageCapabilityConfig } from "@/lib/model-capabilities";
 import { IMAGE_RATIOS, IMAGE_RESOLUTIONS, imagePresetForRatio, imageResolutionUsesQuality, imageSizeConfigWithPresets, imageSizePresets, imageTierAvailable } from "@/lib/image-size-presets";
 import type { ImageResolutionTier } from "@/lib/image-resolution-tiers";
 
+export function ImageRatioOnlyEditor({ size, values, disabled, onChange }: { size: ImageCapabilityConfig["size"]; values: string[]; disabled?: boolean; onChange: (size: ImageCapabilityConfig["size"]) => void }) {
+    const selected = size.values.filter((value) => values.includes(value));
+    const replace = (next: string[]) => {
+        next = next.filter((value) => values.includes(value));
+        if (!next.length) return;
+        onChange({ parameter: "aspect_ratio", values: next, presets: undefined, allowCustom: false, default: next.includes(size.default) ? size.default : next[0] });
+    };
+    return <div className="image-size-presets-editor">
+        <p className="image-size-hint">悠船只设置宽高比，输出像素由模型决定，无需配置 1K / 2K / 4K 档位。</p>
+        <strong>支持比例</strong>
+        <div className="image-size-default-options" role="group" aria-label="支持比例">
+            {values.map((ratio) => <button type="button" key={ratio} disabled={disabled || (selected.length === 1 && selected.includes(ratio))} aria-pressed={selected.includes(ratio)} onClick={() => replace(selected.includes(ratio) ? selected.filter((value) => value !== ratio) : [...selected, ratio])}>{ratio}</button>)}
+        </div>
+        <button type="button" disabled={disabled} onClick={() => replace([...values])}>使用七种常用比例</button>
+        <strong>默认输出</strong>
+        <div className="image-size-default-options" role="group" aria-label="默认输出">
+            {size.values.filter((value) => values.includes(value)).map((ratio) => <button type="button" key={ratio} disabled={disabled} aria-pressed={size.default === ratio} onClick={() => onChange({ ...size, default: ratio })}>{ratio}</button>)}
+        </div>
+        {!size.values.some((value) => values.includes(value)) ? <p role="alert">尚未配置有效比例，请点击“使用七种常用比例”后保存。</p> : null}
+    </div>;
+}
+
 export function ImageSizePresetsEditor({ profile, disabled, onChange }: { profile: ImageCapabilityConfig; disabled?: boolean; onChange: (size: ImageCapabilityConfig["size"]) => void }) {
     const presets = imageSizePresets(profile);
     const id = useId();

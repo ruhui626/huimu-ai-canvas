@@ -211,6 +211,9 @@ func recoverProtocolMedia(ctx context.Context, config providerConfig, mode strin
 			return nil, true, &mediaRecoveryError{stage: "checkpoint", cause: errors.New("上游媒体地址过长")}
 		}
 		item := mediaCheckpointItem{Reference: protocol.MediaReference{URL: reference.URL, MIMEType: reference.MIMEType}}
+		if config.InterfaceType == "youchuan-image" && reference.Metadata["youchuan"] != nil {
+			item.Reference.Metadata = map[string]any{"youchuan": reference.Metadata["youchuan"]}
+		}
 		// Inline bytes are staged, never stored as a large base64 DB checkpoint.
 		if reference.DataURL != "" {
 			policy, policyErr := s.RuntimePolicy()
@@ -339,7 +342,11 @@ func (s *Service) materializeTaskMedia(ctx context.Context, task *model.Task, co
 			return nil, err
 		}
 		url := resourceFileURL(resource.ID)
-		items = append(items, map[string]interface{}{"dataUrl": url, "url": url, "resourceId": resource.ID, "storageKey": "resource:" + resource.ID, "mimeType": resource.MimeType, "bytes": resource.Size, "width": resource.Width, "height": resource.Height, "durationMs": resource.DurationMs})
+		output := map[string]interface{}{"dataUrl": url, "url": url, "resourceId": resource.ID, "storageKey": "resource:" + resource.ID, "mimeType": resource.MimeType, "bytes": resource.Size, "width": resource.Width, "height": resource.Height, "durationMs": resource.DurationMs}
+		if source := item.Reference.Metadata["youchuan"]; source != nil {
+			output["youchuan"] = source
+		}
+		items = append(items, output)
 	}
 	result = map[string]interface{}{"mode": checkpoint.Mode}
 	if checkpoint.Mode == "audio" && checkpoint.SeedAudioTiming != nil {

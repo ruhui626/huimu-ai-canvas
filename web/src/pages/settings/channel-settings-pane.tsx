@@ -372,5 +372,5 @@ function isKnownDefaultBaseUrl(value: string) {
 }
 
 function requiresSecretKey(channel: ModelChannel) {
-    return channel.modelCosts?.some((item) => item.protocol?.startsWith("volcengine-jimeng-")) === true;
+    return channel.modelCosts?.some((item) => item.protocol?.startsWith("volcengine-jimeng-") || item.protocol === "youchuan-image") === true;
 }

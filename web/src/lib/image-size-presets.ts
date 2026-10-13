@@ -107,3 +107,12 @@ export function imageSizeConfigWithPresets(profile: ImageCapabilityConfig, prese
     if (!values.length) values.push("auto");
     return { ...profile.size, presets, values, default: values.includes(profile.size.default) ? profile.size.default : values[0] || "auto" };
 }
+
+export function imageSizeForParameter(profile: ImageCapabilityConfig, parameter: ImageCapabilityConfig["size"]["parameter"], ratioOnlyValues?: string[]): ImageCapabilityConfig["size"] {
+    if (parameter === "none") return { parameter, values: [], presets: undefined, default: "auto", allowCustom: false };
+    if (parameter === "aspect_ratio" && ratioOnlyValues) return {
+        parameter, values: [...ratioOnlyValues], presets: undefined, allowCustom: false,
+        default: ratioOnlyValues.includes(profile.size.default) ? profile.size.default : ratioOnlyValues[0],
+    };
+    return imageSizeConfigWithPresets({ ...profile, size: { ...profile.size, parameter } }, imageSizePresets(profile));
+}

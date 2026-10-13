@@ -27,6 +27,23 @@ func DefaultImageCapabilityConfig(protocol string, modelName string) *ImageCapab
 		MaxOutputs:            15,
 	}
 	switch model.ChannelInterfaceType(protocol) {
+	case "youchuan-image", "runninghub-youchuan-image":
+		image.References = ImageReferenceConfig{PromptMaxChars: 1024, MaxImages: 20, MaxImageBytes: 20 * 1024 * 1024, MaskSupported: false}
+		if protocol == "runninghub-youchuan-image" {
+			image.References.MaxImages = 1
+			image.References.PromptMaxChars = 5850
+			if modelName == "v8.1" {
+				image.References.PromptMaxChars = 8130
+			} else if modelName == "v7" {
+				image.References.PromptMaxChars = 8192
+			}
+		}
+		image.Size = ImageSizeConfig{Parameter: "aspect_ratio", Values: []string{"1:1", "9:16", "16:9", "3:4", "4:3", "3:2", "2:3"}, Default: "1:1"}
+		image.Quality = ImageQualityConfig{Supported: false, Values: []string{}, Default: "auto"}
+		image.TransparentBackground = VideoBooleanConfig{}
+		image.ResponseFormat = ParameterSupport{}
+		image.OutputFormat = ParameterSupport{}
+		image.MaxOutputs = 1 // One billed job; consume every returned image.
 	case model.ChannelInterfaceGrokImage:
 		image.References.MaxImages = 1
 		image.References.MaskSupported = false

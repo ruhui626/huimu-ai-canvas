@@ -1,7 +1,10 @@
 import { canvasNodeToAsset } from "@/lib/canvas/canvas-node-asset";
 import { refreshResource, resourceIdFromStorageKey } from "@/services/api/resources";
 import { ApiError } from "@/services/api/request";
-import { useAssetStore, type Asset, type NewAsset } from "@/stores/use-asset-store";
+import { generationAssetId, useAssetStore, type Asset, type NewAsset } from "@/stores/use-asset-store";
+import { queryGenerationTask } from "@/services/api/task-center";
+import { parseBackendGenerationResult } from "@/services/api/generation-task";
+import { materializeEffectKey } from "@/services/generation-task-materializer";
 import { useCanvasStore, type CanvasProject } from "@/stores/canvas/use-canvas-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 import type { TimelineDirectMedia } from "@/types/timeline";
@@ -11,6 +14,36 @@ export type CanvasAssetRepairResult = {
     createdAssets: number;
     updatedProjects: number;
 };
+
+/** 增量素材库不包含所有生成结果；只读取原任务对应的素材，不重建素材或重新生成。 */
+export async function loadMissingCanvasGenerationAssets(projectIds: Set<string>, loadAssets: (ids: Iterable<string>) => Promise<void>, queryTask = queryGenerationTask) {
+    const scope = getActiveUserScope();
+    const knownKeys = new Set(useAssetStore.getState().assets.map(assetStorageKey).filter(Boolean));
+    const taskKeys = new Map<string, Set<string>>();
+    for (const project of useCanvasStore.getState().projects) {
+        if (!projectIds.has(project.id)) continue;
+        for (const node of project.nodes) {
+            const { taskId, storageKey, assetId } = node.metadata || {};
+            if (!isDurableMediaNode(node) || assetId || !taskId || !storageKey?.startsWith("resource:") || knownKeys.has(storageKey)) continue;
+            const keys = taskKeys.get(taskId) || new Set<string>();
+            keys.add(storageKey);
+            taskKeys.set(taskId, keys);
+        }
+    }
+    const ids = new Set<string>();
+    for (const [taskId, keys] of taskKeys) {
+        const task = await queryTask(taskId);
+        if (scope !== getActiveUserScope()) throw new Error("账号已切换，已停止恢复素材绑定");
+        if (task.id !== taskId || task.status !== "succeeded") continue;
+        const result = parseBackendGenerationResult(task);
+        const outputs = result.images?.length ? result.images : result.video ? [result.video] : result.audio ? [result.audio] : [];
+        for (const [index, output] of outputs.entries()) {
+            if (output.storageKey && keys.has(output.storageKey)) ids.add(await generationAssetId(materializeEffectKey(taskId, index)));
+        }
+    }
+    if (scope !== getActiveUserScope()) throw new Error("账号已切换，已停止恢复素材绑定");
+    if (ids.size) await loadAssets(ids);
+}
 
 export function repairMissingCanvasAssets(projectIds?: Set<string>, partialAssets = false): CanvasAssetRepairResult {
     const assetStore = useAssetStore.getState();

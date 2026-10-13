@@ -17,13 +17,13 @@ export function CanvasSyncStatus({ projectId, onLoadLatest, onOpenVersions }: { 
     const phase = progress?.phase;
     const conflict = phase === "conflict";
     const error = phase === "error";
-    const retryScheduled = error && progress?.message?.includes("自动重试");
+    const retryScheduled = error && progress?.retryScheduled;
     const saving = phase === "pending" || phase === "saving" || phase === "uploading";
     const reconciling = phase === "reconciling";
     const tone = conflict ? "conflict" : error ? "error" : saving || reconciling ? "pending" : phase === "done" ? "done" : "idle";
-    const label = conflict ? "需要处理冲突" : error ? "云端保存失败" : reconciling ? "正在自动合并" : saving ? "正在同步" : phase === "done" ? "已保存到云端" : "尚未同步";
+    const label = conflict ? "有修改需要确认" : error ? retryScheduled ? "等待同步" : "保存需要处理" : reconciling || saving ? "正在保存…" : phase === "done" ? "已保存到云端" : "尚未同步";
     const description = conflict
-        ? "本地与云端修改了同一字段，系统已保留本地草稿。"
+        ? progress?.message || "本地与云端版本存在冲突，请核对后选择。"
         : error
           ? progress?.message || "本地内容仍然保留，云端暂未确认。"
           : reconciling
@@ -93,12 +93,12 @@ export function CanvasSyncStatus({ projectId, onLoadLatest, onOpenVersions }: { 
                     {conflict ? (
                         <div className="canvas-sync-panel__callout">
                             <strong>先保护本地，再决定版本</strong>
-                            <span>{progress?.draftCount ? `已保留 ${progress.draftCount} 份本地草稿。` : "加载云端版前会先保留本地草稿。"} 这是替换，不是合并。</span>
+                            <span>{progress?.localDraftSaved ? "当前本地草稿已保留。" : "当前修改尚未确认备份，建议先下载本地副本。"} 加载云端版是替换，不是合并。</span>
                         </div>
                     ) : error ? (
                         <div className="canvas-sync-panel__callout">
-                            <strong>{retryScheduled ? "本地内容仍在，正在等待重试" : "本地内容仍在，未覆盖云端"}</strong>
-                            <span>{retryScheduled ? "网络恢复后会自动重试；也可以点击“立即重试”。" : "请处理上面的错误后点击“立即重试”；在此之前本地内容不会被覆盖。"}</span>
+                            <strong>{progress?.localDraftSaved ? "本地草稿已保留，云端尚未确认" : "本地备份尚未确认，请勿关闭页面"}</strong>
+                            <span>{retryScheduled ? "正在等待自动重试，也可点击“立即重试”。" : "请处理上面的错误后重试；重要内容建议先下载本地副本。"}</span>
                         </div>
                     ) : null}
                     <div className="canvas-sync-panel__actions">
@@ -128,9 +128,15 @@ export function CanvasSyncStatus({ projectId, onLoadLatest, onOpenVersions }: { 
                                 icon={<Download className="size-3.5" />}
                                 onClick={() =>
                                     void run(async () => {
-                                        const project = useCanvasStore.getState().openProject(projectId);
-                                        if (project) await exportCanvasProjects([project], `${project.title}-本地副本`);
-                                        message.success("当前内容已下载，可作为新画布导入");
+                                        const hideLoading = message.loading({ content: "正在导出本地副本，请稍候…", duration: 0 });
+                                        try {
+                                            const project = useCanvasStore.getState().openProject(projectId);
+                                            if (!project) throw new Error("画布不存在，无法导出");
+                                            await exportCanvasProjects([project], `${project.title}-本地副本`);
+                                            message.success("文件已准备好，请查看浏览器下载");
+                                        } finally {
+                                            hideLoading();
+                                        }
                                     }).catch(() => undefined)
                                 }
                             >
@@ -203,10 +209,11 @@ export function CanvasSyncDraftMenu({ projectId }: { projectId?: string }) {
                                   return;
                               }
                               setExporting(true);
+                              const hideLoading = message.loading({ content: "正在导出本地草稿，请稍候…", duration: 0 });
                               void exportCanvasProjects([draft.project], `${draft.project.title}-本地草稿`, { includeLocalDrawings: false })
-                                  .then(() => message.success("草稿已下载，可从画布列表导入为新画布"))
+                                  .then(() => message.success("文件已准备好，请查看浏览器下载"))
                                   .catch(() => message.error("草稿下载失败，请重试"))
-                                  .finally(() => setExporting(false));
+                                  .finally(() => { hideLoading(); setExporting(false); });
                           },
                       }))
                     : [{ key: "empty", label: loading ? "正在读取草稿…" : "暂无本地草稿", disabled: true }],

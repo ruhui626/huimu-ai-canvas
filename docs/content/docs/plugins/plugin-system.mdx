@@ -11,6 +11,22 @@ description: 影策统一插件系统的扩展边界、Manifest 合同与 Eagle 
 
 ## 1. 背景与范围
 
+### RunningHub 悠船标准图片 API
+
+安装 `runninghub-youchuan-image.yingce-plugin`，选择“RunningHub 悠船图片”协议。Base URL 填 `https://www.runninghub.ai`，API Key 填 RunningHub 企业级-共享 API Key，不需要 Secret Key，也不要选择旧的 RunningHub Workflow 协议。模型 ID 填 `v8.1`、`v8.2` 或 `v7`；分别调用 `/openapi/v2/youchuan/text-to-image-v81`、`/openapi/v2/youchuan/text-to-image-v8.2-fast`、`/openapi/v2/youchuan/text-to-image-v7`，查询统一使用 `POST /openapi/v2/query`。
+
+后台计费选择按次，填写一次标准任务的积分价格；上游实际价格需另行确认，不以返回图片张数或 `usage.thirdPartyConsumeMoney` 自动换算本站积分。保存实际返回的全部图片，不假设固定四张。结果链接有效期为 24 小时，继续通过现有媒体暂存、转存和恢复流程保存，恢复不重新提交生成。
+
+复用现有悠船七种比例和高级设置；平台默认风格化 100、多样性 5，V8.2/V7 怪异度 50，V8.1 隐藏且不发送怪异度。扩展字段位于 `providerOptions.runninghub-youchuan-image`。普通参考图最多一张，API 参数表上限 20 MiB（网站上传控件写 10 MB，两者有差异，真实接口仍待确认）。提示词上限 V8.1 为 8130、V8.2 为 5850、V7 为 8192 字符。只开放标准生成：`quality` 固定 `"1"`，V8 的 `hd` 固定 `false`，不开放风格参考、主体参考、高清、草图、极速或手写 `--` 参数。此插件与悠船双凭据直连独立，已有直连配置不变。
+
+### 悠船图片机构 API
+
+安装或更新至 `youchuan-image.yingce-plugin` 2.1.0，系统渠道选择“悠船图片”，Base URL 使用 `https://ali.youchuan.cn`；API Key 填机构标识，Secret Key 填机构授权码。模型 ID 使用 `v8.1`、`v8.2`、`v7` 或 `niji-7`（Niji 7），计费选按次并填写一组标准任务的积分价格，而非单张价格。三个整数扩展参数放在 `providerOptions.youchuan-image` 下：`stylize` 范围 0–1000 默认 100，`weird` 范围 0–3000 平台默认 50，`chaos` 范围 0–100 平台默认 5。仅标准快速模式，不发送 `--hd`。
+
+插件将提示词、普通参考图 URL、版本和比例映射到 `POST /v1/tob/diffusion` 的 `text`，通过 `GET /v1/tob/job/{id}` 查询。复用现有队列、多图保存及结算，不另建生成流程。第一阶段固定标准快速模式并拦截手写参数，防止未配置价格的高清、极速或批量模式混入；部分审核失败只保存实际返回的可用图片，保留原始序号，整组仍按一次任务结算。
+
+宿主支持 `youchuan` 鉴权类型，使用 `x-youchuan-app`、`x-youchuan-secret`。媒体下载只向配置的同源地址发送机构凭据，跨域跳转移除两项请求头；跨域资源应由上游提供可访问 URL。真实账号的下载授权与对象存储仍需联调确认，不通过向任意 CDN 发送密钥来绕过访问错误。
+
 ### 豆包音频参数
 
 `doubao-streaming-tts` 2.0.1 使用非流式 `/api/v3/tts/create`，不因历史插件 ID 含 streaming 而改变接口。画布公开音频选项新增 `audioSampleRate`（前端默认 24000 Hz，历史空值提交时也按 24000 Hz 处理）、`audioPitch`（默认 0）、`audioVolume`（默认 1 倍），通过任务配置传递，宿主仅在豆包音频协议下转换到插件命名空间的 `sample_rate`、`pitch_rate`、`loudness_rate`。后者由音量倍率按 `(倍率 - 1) × 100` 四舍五入得到。

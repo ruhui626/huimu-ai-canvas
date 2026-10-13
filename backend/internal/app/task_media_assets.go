@@ -148,6 +148,9 @@ func (s *Service) registerRecoveredMediaAssets(task model.Task) error {
 		if projectID != "" {
 			metadata["projectIds"] = []string{projectID}
 		}
+		if source := item.Reference.Metadata["youchuan"]; source != nil {
+			metadata["youchuan"] = source
+		}
 		payload, err := json.Marshal(map[string]any{"id": assetID, "kind": checkpoint.Mode, "category": model.AssetCategoryMaterial, "status": model.AssetVersionStatusConfirmed, "source": "生成任务", "title": title, "coverUrl": url, "tags": []string{"生成"}, "createdAt": now.UTC().Format(time.RFC3339Nano), "updatedAt": now.UTC().Format(time.RFC3339Nano), "data": data, "metadata": metadata})
 		if err != nil {
 			return err
