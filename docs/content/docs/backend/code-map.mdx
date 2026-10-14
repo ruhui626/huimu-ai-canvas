@@ -51,6 +51,7 @@ description: 从产品功能快速定位主要代码入口
 | 公开分享 | `web/src/pages/canvas/shared.tsx` | `components/canvas/canvas-viewport.tsx`、`services/api/canvas-share.ts` |
 | 管理后台 | `web/src/pages/admin/`、`router.tsx` | `admin-context.tsx`、`users/`、`channels/`、`logs/`、`storyboard-prompts/`、`settings/`、`components/agent-lessons-panel.tsx` |
 | 支付 CSV 导出 | `web/src/pages/admin/payments/payments-page.tsx` | `services/api/payments.ts`、`AdminExportButton`；后端 `handler/payment_export.go`、`app/payment_export.go`、`repository/payment_export.go`（共享筛选、只读快照） |
+| 支付回调与补单 | `backend/internal/handler/payment.go` | `app/payment.go` 验签与幂等入账；`payment/rpc.go` 回调隔离并发；`app/payment_worker.go` 独立关单/补单循环；`repository/payment.go` 查询尝试记录与公平排序 |
 
 ## 画布核心
 

@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"sync"
 	"time"
 
+	"yingce/backend/internal/model"
 	"yingce/backend/internal/payment"
 )
 
@@ -39,6 +41,18 @@ func (s *Service) startPaymentWorker(ctx context.Context) {
 				return
 			case <-orderTicker.C:
 				s.reconcileExpiredPaymentOrders(ctx)
+			}
+		}
+	})
+	s.runWorkerLoop(func(ctx context.Context) {
+		s.queryPendingPaymentOrders(ctx)
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
 				s.queryPendingPaymentOrders(ctx)
 			}
 		}
@@ -74,20 +88,21 @@ func (s *Service) drainPaymentNotifications() {
 }
 
 func (s *Service) reconcileExpiredPaymentOrders(ctx context.Context) {
-	orders, err := s.repo.ClaimExpiredPaymentOrders(32)
+	// Only claim as many orders as can start now, keeping the two-minute lease
+	// longer than the 45-second operation deadline.
+	orders, err := s.repo.ClaimExpiredPaymentOrders(4)
 	if err != nil {
 		log.Printf("expired payment order claim failed: %v", err)
 		return
 	}
-	for index := range orders {
-		order := &orders[index]
+	runPaymentOrderBatch(ctx, orders, func(order *model.PaymentOrder) {
 		operationContext, cancel := context.WithTimeout(ctx, 45*time.Second)
 		err := s.closePaymentOrder(operationContext, order)
 		cancel()
 		if err != nil {
 			_ = s.repo.RestoreClosingPaymentOrder(order.ID, safePaymentError(err))
 		}
-	}
+	})
 }
 
 func (s *Service) queryPendingPaymentOrders(ctx context.Context) {
@@ -96,12 +111,41 @@ func (s *Service) queryPendingPaymentOrders(ctx context.Context) {
 		log.Printf("pending payment order query failed: %v", err)
 		return
 	}
-	for index := range orders {
+	runPaymentOrderBatch(ctx, orders, func(order *model.PaymentOrder) {
 		operationContext, cancel := context.WithTimeout(ctx, 20*time.Second)
-		err := s.queryPaymentOrder(operationContext, &orders[index])
+		err := s.queryPaymentOrder(operationContext, order)
 		cancel()
 		if err != nil {
-			log.Printf("payment order compensation query failed: order=%s error_type=%T", orders[index].ID, err)
+			log.Printf("payment order compensation query failed: order=%s error_type=%T", order.ID, err)
+		}
+	})
+}
+
+func runPaymentOrderBatch(ctx context.Context, orders []model.PaymentOrder, run func(*model.PaymentOrder)) {
+	jobs := make(chan *model.PaymentOrder)
+	var workers sync.WaitGroup
+	for range 4 {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for order := range jobs {
+				if ctx.Err() != nil {
+					continue
+				}
+				run(order)
+			}
+		}()
+	}
+	defer workers.Wait()
+	defer close(jobs)
+	for index := range orders {
+		if ctx.Err() != nil {
+			return
+		}
+		select {
+		case jobs <- &orders[index]:
+		case <-ctx.Done():
+			return
 		}
 	}
 }

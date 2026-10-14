@@ -383,6 +383,11 @@ func (r *Repository) CompletePaymentOrder(providerID, merchantOrderNo string, ev
 	return &order, granted, err
 }
 
+func (r *Repository) RecordPaymentQueryAttempt(id string) error {
+	return r.db.Model(&model.PaymentOrder{}).Where("id = ?", id).
+		UpdateColumn("last_queried_at", time.Now()).Error
+}
+
 func (r *Repository) RecordPaymentQuery(id, providerStatus string) error {
 	now := time.Now()
 	return r.db.Model(&model.PaymentOrder{}).Where("id = ?", id).Updates(map[string]any{
@@ -431,7 +436,7 @@ func (r *Repository) ClaimExpiredPaymentOrders(limit int) ([]model.PaymentOrder,
 	if err := r.db.Where(
 		"(status IN ? AND expires_at <= ?) OR (status = ? AND updated_at <= ?)",
 		claimable, now, model.PaymentOrderClosing, now.Add(-2*time.Minute),
-	).Order("expires_at asc").Limit(limit).Find(&candidates).Error; err != nil {
+	).Order("updated_at asc, expires_at asc, id asc").Limit(limit).Find(&candidates).Error; err != nil {
 		return nil, err
 	}
 	claimed := make([]model.PaymentOrder, 0, len(candidates))
@@ -460,7 +465,7 @@ func (r *Repository) PaymentOrdersNeedingQuery(cutoff time.Time, limit int) ([]m
 	err := r.db.Where("status IN ? AND (last_queried_at IS NULL OR last_queried_at < ?)", []model.PaymentOrderStatus{
 		model.PaymentOrderCreated, model.PaymentOrderPending, model.PaymentOrderCreateFailed,
 	}, cutoff).
-		Order("created_at asc").Limit(limit).Find(&items).Error
+		Order("CASE WHEN last_queried_at IS NULL THEN 0 ELSE 1 END asc, last_queried_at asc, created_at asc, id asc").Limit(limit).Find(&items).Error
 	return items, err
 }
 

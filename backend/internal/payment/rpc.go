@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -37,7 +38,14 @@ const (
 	pluginRPCTimeout   = 30 * time.Second
 )
 
+// Separate callback capacity prevents unsigned traffic from occupying checkout
+// and reconciliation slots. Limits are shared by all providers in this process.
+var notificationRPCSlots = make(chan struct{}, 4)
+var paymentRPCSlots = make(chan struct{}, 8)
+var ErrNotificationBusy = errors.New("payment notification verification is busy")
+
 type RPCProvider struct {
+	commandMu  sync.Mutex
 	descriptor Descriptor
 	entry      string
 	command    string
@@ -85,6 +93,24 @@ func (p *RPCProvider) call(ctx context.Context, request rpcRequest, output any) 
 	if p == nil {
 		return errors.New("payment plugin runtime is unavailable")
 	}
+	ctx, cancel := context.WithTimeout(ctx, pluginRPCTimeout)
+	defer cancel()
+	slots := paymentRPCSlots
+	if request.Operation == "verify_notification" {
+		slots = notificationRPCSlots
+		select {
+		case slots <- struct{}{}:
+		default:
+			return ErrNotificationBusy
+		}
+	} else {
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	defer func() { <-slots }()
 	command, err := p.executable()
 	if err != nil {
 		return p.startError(err)
@@ -102,8 +128,6 @@ func (p *RPCProvider) call(ctx context.Context, request rpcRequest, output any) 
 	if err := validatePaymentExecutablePlatform(command); err != nil {
 		return p.startError(err)
 	}
-	ctx, cancel := context.WithTimeout(ctx, pluginRPCTimeout)
-	defer cancel()
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return err
@@ -165,6 +189,8 @@ func (p *RPCProvider) executable() (string, error) {
 	if p == nil {
 		return "", errors.New("payment plugin runtime is unavailable")
 	}
+	p.commandMu.Lock()
+	defer p.commandMu.Unlock()
 	if strings.TrimSpace(p.command) != "" {
 		return p.command, nil
 	}
@@ -182,7 +208,9 @@ func (p *RPCProvider) executable() (string, error) {
 
 func (p *RPCProvider) startError(cause error) error {
 	providerErr := classifyPaymentPluginStartError(cause)
+	p.commandMu.Lock()
 	command := strings.TrimSpace(p.command)
+	p.commandMu.Unlock()
 	if command == "" {
 		command, _ = ResolveRPCBackendPath(p.dir, p.entry)
 	}

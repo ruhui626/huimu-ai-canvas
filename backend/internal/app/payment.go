@@ -362,6 +362,9 @@ func (s *Service) AcceptPaymentNotification(ctx context.Context, providerID, con
 		return err
 	}
 	notification, err := provider.VerifyNotification(ctx, values, headers, rawBody)
+	if errors.Is(err, payment.ErrNotificationBusy) {
+		return WrapAppError(http.StatusServiceUnavailable, "支付通知处理繁忙，请重试", err)
+	}
 	if err != nil {
 		return BadAuthRequest("支付通知验签失败")
 	}
@@ -411,6 +414,11 @@ func (s *Service) processPaymentNotification(notification *model.PaymentNotifica
 }
 
 func (s *Service) queryPaymentOrder(ctx context.Context, order *model.PaymentOrder) error {
+	// Record attempts even when credentials, transport or the provider fail. Do
+	// not overwrite provider status with an invented payment result.
+	if err := s.repo.RecordPaymentQueryAttempt(order.ID); err != nil {
+		return err
+	}
 	provider, config, values, err := s.paymentRuntimeForOrder(order)
 	if err != nil {
 		return err

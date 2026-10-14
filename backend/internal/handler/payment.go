@@ -154,12 +154,19 @@ func RegisterPaymentRoutes(r *gin.RouterGroup, svc *service.Service) {
 		if len(rawBody) == 0 && c.Request.URL.RawQuery != "" {
 			rawBody = []byte(c.Request.URL.RawQuery)
 		}
+		if len(rawBody) == 0 || len(rawBody) > paymentNotificationMaxBytes {
+			writePaymentNotificationFailure(c, svc, c.Param("providerId"), http.StatusBadRequest)
+			return
+		}
 		err = svc.AcceptPaymentNotification(c.Request.Context(), c.Param("providerId"), c.Param("configId"), c.Request.Header.Clone(), rawBody)
 		if err != nil {
 			status := http.StatusInternalServerError
 			var appErr *service.AppError
 			if errors.As(err, &appErr) && appErr.Status < http.StatusInternalServerError {
 				status = http.StatusBadRequest
+			}
+			if errors.As(err, &appErr) && appErr.Status == http.StatusServiceUnavailable {
+				status = http.StatusServiceUnavailable
 			}
 			writePaymentNotificationFailure(c, svc, c.Param("providerId"), status)
 			return
@@ -367,6 +374,9 @@ func RegisterPaymentRoutes(r *gin.RouterGroup, svc *service.Service) {
 
 func writePaymentNotificationFailure(c *gin.Context, svc *service.Service, providerID string, status int) {
 	responseStatus, contentType, body := svc.PaymentNotificationFailureResponse(providerID, status)
+	if status == http.StatusServiceUnavailable {
+		responseStatus = status
+	}
 	if body != "" {
 		c.Data(responseStatus, contentType, []byte(body))
 		return
