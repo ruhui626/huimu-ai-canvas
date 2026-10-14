@@ -35,6 +35,8 @@ export function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mo
         mode === "image"
             ? {
                   size: node.metadata?.size,
+                  imageResolution: node.metadata?.imageResolution,
+                  imageParameters: node.metadata?.imageParameters,
                   quality: node.metadata?.quality,
                   transparentBackground: node.metadata?.transparentBackground,
                   videoWatermark: node.metadata?.watermark,
@@ -49,6 +51,8 @@ export function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mo
               },
         {
             size: globalConfig.size || defaultConfig.size,
+            imageResolution: globalConfig.imageResolution || defaultConfig.imageResolution,
+            imageParameters: globalConfig.imageParameters ?? "{}",
             quality: globalConfig.quality || defaultConfig.quality,
             transparentBackground: globalConfig.transparentBackground || defaultConfig.transparentBackground,
             count: String(globalConfig.canvasImageCount || globalConfig.count || defaultConfig.count),
@@ -63,6 +67,8 @@ export function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mo
         model,
         ...youchuanNodeSettings(globalConfig, node.metadata),
         quality: defaults.quality ?? globalConfig.quality ?? defaultConfig.quality,
+        imageResolution: defaults.imageResolution ?? globalConfig.imageResolution ?? defaultConfig.imageResolution,
+        imageParameters: defaults.imageParameters ?? globalConfig.imageParameters ?? "{}",
         size: defaults.size ?? globalConfig.size ?? defaultConfig.size,
         transparentBackground: defaults.transparentBackground ?? "false",
         videoSeconds: defaults.videoSeconds ?? normalizeVideoDuration(globalConfig.videoSeconds ?? defaultConfig.videoSeconds),

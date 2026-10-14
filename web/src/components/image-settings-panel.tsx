@@ -3,7 +3,9 @@ import { YouchuanImageSettingsPanel } from "./youchuan-image-settings";
 import type { YouchuanImageSettings } from "@/lib/youchuan-image";
 import { isYouchuanImageProtocol } from "@/lib/model-protocols";
 import { IMAGE_GENERATION_COUNTS } from "@/lib/image-generation-count";
-import { imageResolutionUsesQuality } from "@/lib/image-size-presets";
+
+import { ImageParameterFields } from "./image-parameter-fields";
+import { imageResolutionUsesQuality, imageSizePresets } from "@/lib/image-size-presets";
 import { type ReactNode } from "react";
 import { ConfigProvider } from "antd";
 import { Switch } from "@/components/ui/base/switch";
@@ -12,18 +14,11 @@ import { type CanvasTheme } from "@/lib/canvas-theme";
 import { buildImageResolutionOptions, formatImageResolutionSize } from "@/lib/image-resolution-tiers";
 import { modelCapabilityConfigFor, normalizeImageValue, type ImageCapabilityConfig } from "@/lib/model-capabilities";
 import { mergedImageCapabilityConfig } from "@/lib/model-selection";
+import { imagePriceSelector, normalizeImagePriceSelector } from "@/lib/image-pricing";
 import { modelOptionName, resolveModelChannel, type AiConfig } from "@/stores/use-config-store";
+import { imageQualityLabel } from "@/lib/image-quality";
 
-const qualityOptions = [
-    { value: "auto", label: "自动" },
-    { value: "high", label: "高" },
-    { value: "medium", label: "中" },
-    { value: "low", label: "低" },
-    { value: "1k", label: "1K" },
-    { value: "2k", label: "2K" },
-    { value: "4k", label: "4K" },
-];
-
+export { imageQualityLabel } from "@/lib/image-quality";
 type AspectOption = { value: string; label: string; width: number; height: number; icon: string; size?: string };
 
 const aspectOptions: AspectOption[] = [
@@ -47,7 +42,7 @@ const aspectOptions: AspectOption[] = [
 
 type ImageSettingsPanelProps = {
     config: AiConfig;
-    onConfigChange: (key: "quality" | "size" | "transparentBackground" | "count", value: string) => void;
+    onConfigChange: (key: "quality" | "imageResolution" | "size" | "transparentBackground" | "count" | "imageParameters", value: string) => void;
     theme: CanvasTheme;
     showTitle?: boolean;
     showQuality?: boolean;
@@ -69,11 +64,12 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
     const effectiveMaxCount = Math.min(4, maxCount, profile.maxOutputs);
     const count = Math.max(1, Math.min(effectiveMaxCount, Number(normalized.count)));
     const activeSize = normalized.size;
-    const activeQualityOptions = profile.quality.values.map((value) => qualityOptions.find((item) => item.value === value) || { value, label: value });
+    const activeQualityOptions = profile.quality.values.map((value) => ({ value, label: imageQualityLabel(value) }));
     const priceTiers = imageModelPriceTiers(config);
     const selectedModel = config.model || config.imageModel;
     const channel = resolveModelChannel(config, selectedModel);
     const protocol = channel.modelCosts?.find((item) => item.model === modelOptionName(selectedModel))?.protocol || channel.interfaceType;
+    if (profile.parameters) return <ImageSettingsTheme theme={theme}><div className={className}>{showTitle ? <div className="mb-3 text-base font-semibold">图像设置</div> : null}<ImageParameterFields profile={profile} config={config} onChange={onConfigChange} showSize={showSize} showCount={showCount} showQuality={showQuality} showTransparent={showTransparent} /></div></ImageSettingsTheme>;
 
     return (
         <ImageSettingsTheme theme={theme}>
@@ -112,7 +108,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                         />
                     </span>
                 </div> : null}
-                {showSize ? <ImageSizePicker profile={profile} size={activeSize} quality={quality} ratioOnly={isYouchuanImageProtocol(protocol)} onChange={(size, nextQuality) => applyImageSizeSelection(onConfigChange, size, nextQuality)} /> : null}
+                {showSize ? <ImageSizePicker profile={profile} size={activeSize} quality={quality} imageResolution={normalized.imageResolution} ratioOnly={isYouchuanImageProtocol(protocol)} onChange={(size, nextQuality, resolution) => applyImageSizeSelection(onConfigChange, size, nextQuality, resolution)} /> : null}
                 {isYouchuanImageProtocol(protocol) && onYouchuanChange ? <YouchuanImageSettingsPanel config={config} protocol={protocol} model={modelOptionName(selectedModel)} onChange={onYouchuanChange} /> : null}
                 {protocol === "runninghub-youchuan-image" ? <div className="text-xs" style={{ color: theme.node.muted }}>每次一个标准任务，最多一张普通参考图；保存实际返回的全部图片，按后台整次任务报价结算。不支持手写 -- 参数。</div> : null}
                 {protocol === "youchuan-image" ? <div className="text-xs" style={{ color: theme.node.muted }}>每次一组 4 张，按一次任务计费；部分图片可能因审核无法返回。当前为标准快速生成，不支持手写 -- 参数。</div> : null}
@@ -133,9 +129,10 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
     );
 }
 
-export function applyImageSizeSelection(onConfigChange: ImageSettingsPanelProps["onConfigChange"], size: string, quality?: string) {
+export function applyImageSizeSelection(onConfigChange: ImageSettingsPanelProps["onConfigChange"], size: string, quality?: string, resolution?: string) {
     onConfigChange("size", size);
     if (quality) onConfigChange("quality", quality);
+    if (resolution !== undefined) onConfigChange("imageResolution", resolution);
 }
 
 export function ImageSettingsTheme({ theme, children }: { theme: CanvasTheme; children: ReactNode }) {
@@ -149,10 +146,6 @@ export function ImageSettingsTheme({ theme, children }: { theme: CanvasTheme; ch
             {children}
         </ConfigProvider>
     );
-}
-
-export function imageQualityLabel(value: string) {
-    return ({ auto: "自动", high: "高", medium: "中", low: "低", "1k": "1K", "2k": "2K", "4k": "4K" } as Record<string, string>)[value.toLowerCase()] || value || "默认";
 }
 
 function isGrokResolutionQuality(profile: ImageCapabilityConfig) {
@@ -172,11 +165,12 @@ function imageModelPriceTiers(config: AiConfig) {
 }
 
 function hasPriceTierForImageSelection(tiers: ReturnType<typeof imageModelPriceTiers>, quality: string, size: string) {
-	if (!tiers.length) return true;
-	return tiers.some((tier) => {
-		const selector = tier.selector || {};
-		return (!selector.quality || selector.quality === "*" || selector.quality === quality.toLowerCase()) && (!selector.size || selector.size === "*" || selector.size === size.toLowerCase());
-	});
+    if (!tiers.length) return true;
+    const requested = imagePriceSelector(quality, size);
+    return tiers.some((tier) => {
+        const selector = normalizeImagePriceSelector(tier.selector || {});
+        return Object.entries(selector).every(([key, value]) => value === "*" || requested[key] === value);
+    });
 }
 
 function OptionPill({ selected, disabled = false, theme, onClick, children }: { selected: boolean; disabled?: boolean; theme: CanvasTheme; onClick: () => void; children: ReactNode }) {

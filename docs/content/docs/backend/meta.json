@@ -15,6 +15,7 @@
     "oss-bucket-rebind",
     "custom-offline-deployment",
     "protocol-plugins",
-    "canvas-data-structure"
+    "canvas-data-structure",
+    "canvas-operations-sync"
   ]
 }

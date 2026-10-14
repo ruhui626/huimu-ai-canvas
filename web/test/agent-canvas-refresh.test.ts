@@ -3,7 +3,7 @@ import localforage from "localforage";
 import { canvasContentHash } from "@/lib/canvas/canvas-content";
 import { readCanvasSyncDrafts } from "@/services/canvas-sync-drafts";
 import { useSyncProgressStore } from "@/stores/use-sync-progress-store";
-import { http } from "@/services/api/request";
+import { http, ApiError } from "@/services/api/request";
 import { applyAgentCanvasPatches, initializeRemoteUserDataSession, refreshCanvasAfterAgent, resetRemoteUserDataSync, subscribeAgentCanvasRefresh, saveRemoteUserDataNow } from "@/services/user-data-sync";
 import { flushCanvasStorePersistence, useCanvasStore, type CanvasProject } from "@/stores/canvas/use-canvas-store";
 import { CanvasNodeType } from "@/types/canvas";
@@ -18,6 +18,7 @@ let unsubscribe = () => {};
 let restore = () => {};
 const originalGet = localforage.getItem;
 const originalSet = localforage.setItem;
+const originalRemove = localforage.removeItem;
 const originalWindow = globalThis.window;
 const indexed = new Map<string, unknown>();
 beforeEach(() => {
@@ -37,6 +38,7 @@ beforeEach(() => {
         indexed.set(key, value);
         return value;
     }) as typeof localforage.setItem;
+    localforage.removeItem = async (key: string) => { indexed.delete(key); };
 });
 afterEach(async () => {
     resetUserDataSessionReadiness();
@@ -46,6 +48,7 @@ afterEach(async () => {
     await flushCanvasStorePersistence();
     localforage.getItem = originalGet;
     localforage.setItem = originalSet;
+    localforage.removeItem = originalRemove;
     if (originalWindow === undefined) delete (globalThis as { window?: unknown }).window;
     else Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
 });
@@ -154,7 +157,7 @@ test("dirty persisted edits still conflict when Agent changes the same field", a
     useCanvasStore.setState({ projects: [{ ...initial, title: "本地修改" }] });
     mock.mockResolvedValue({ project: { ...remote, title: "云端修改" } });
     await expect(refreshCanvasAfterAgent(initial.id)).rejects.toThrow();
-    expect(useSyncProgressStore.getState().syncingProjects[initial.id].phase).toBe("conflict");
+    expect(useSyncProgressStore.getState().syncingProjects[initial.id]).toMatchObject({ phase: "pending", pendingChanges: 1 });
     expect(useCanvasStore.getState().projects[0].title).toBe("本地修改");
 });
 
@@ -338,9 +341,15 @@ test("reconciliation after a delta gap still protects genuinely conflicting edit
     useCanvasStore.setState({ projects: [{ ...initial, title: "未保存标题" }] });
     await expect(applyAgentCanvasPatches(initial.id, [{ canvasId: initial.id, baseRevision: 2, revision: 3, nodes: [], connections: [] }])).rejects.toThrow("版本不连续");
     await expect(refreshCanvasAfterAgent(initial.id)).rejects.toThrow("冲突");
-    expect(useSyncProgressStore.getState().syncingProjects[initial.id].phase).toBe("conflict");
+    expect(useSyncProgressStore.getState().syncingProjects[initial.id]).toMatchObject({ phase: "pending", pendingChanges: 1 });
     expect((await readCanvasSyncDrafts(initial.id))[0].project.title).toBe("未保存标题");
-    await expect(saveRemoteUserDataNow(initial.id)).rejects.toThrow("云端画布已有更新");
+    const patch = spyOn(http, "patch").mockRejectedValue(new ApiError("云端画布已有更新", { status: 409 }));
+    try {
+        await expect(saveRemoteUserDataNow(initial.id)).rejects.toThrow("云端画布已有更新");
+        expect(useCanvasStore.getState().openProject(initial.id)?.title).toBe("未保存标题");
+    } finally {
+        patch.mockRestore();
+    }
 });
 
 test("an identical cloud snapshot clears a stale conflict without replaying editor nodes", async () => {
@@ -377,8 +386,8 @@ test("an unverified dirty cache cannot become a save baseline merely because rev
     expect((await readCanvasSyncDrafts(initial.id))[0].project.title).toBe(edited.title);
 });
 
-test("Agent updates merge a local title edit and the next save uses the new revision", async () => {
-    await setup();
+test("Agent updates merge a local title edit and the next operation uses the new revision", async () => {
+    const get = await setup();
     useCanvasStore.setState({ projects: [{ ...initial, title: "本地标题" }] });
     const patch = { canvasId: initial.id, baseRevision: 1, revision: 2, nodes: remote.nodes.map((after) => ({ before: null, after })), connections: [] };
     await applyAgentCanvasPatches(initial.id, [patch]);
@@ -386,18 +395,19 @@ test("Agent updates merge a local title edit and the next save uses the new revi
     expect(merged.title).toBe("本地标题");
     expect(merged.revision).toBe(2);
     expect(merged.nodes).toEqual(remote.nodes);
-    const put = spyOn(http, "put").mockImplementation(async (_url, body) => {
-        const project = (body as { project: CanvasProject }).project;
-        expect(project.revision).toBe(2);
-        return { project: { ...project, revision: 3 } } as never;
+    const post = spyOn(http, "patch").mockImplementation(async (url, body) => {
+        expect(url).toBe("/canvas-projects/agent-test/operations");
+        expect(body).toMatchObject({ baseRevision: 2, operations: [{ type: "set_field", field: "title", value: "本地标题", beforeValue: "测试" }] });
+        get.mockResolvedValue({ project: { ...merged, revision: 3 } });
+        return { project: { revision: 3 } } as never;
     });
     try {
         await saveRemoteUserDataNow(initial.id);
-        expect(put).toHaveBeenCalledTimes(1);
+        expect(post).toHaveBeenCalledTimes(1);
         await applyAgentCanvasPatches(initial.id, [patch]);
         expect(useCanvasStore.getState().projects[0].revision).toBe(3);
         expect(useCanvasStore.getState().projects[0].title).toBe("本地标题");
     } finally {
-        put.mockRestore();
+        post.mockRestore();
     }
 });

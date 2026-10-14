@@ -1,5 +1,6 @@
 import { getFeatureAvailability, type AuthSessionPayload } from "@/services/api/auth";
-import { getModelCatalog, type CapabilitySpec, type ModelCatalogResponse, type OptionConstraint, type PublicChannelCatalog } from "@/services/api/logical-models";
+import { projectImageParameters, imageParametersForSpec } from "./image-parameters";
+import { getModelCatalog, type CapabilitySpec, type ModelCatalogResponse, type OptionConstraint, type PublicChannelCatalog, type PublicLogicalModel } from "@/services/api/logical-models";
 import { localForageStorage } from "@/lib/localforage-storage";
 import { appQueryClient } from "@/lib/query-client";
 import { scopedLocalStorage, setActiveUserScope, withUserScopedPersistenceSuppressed } from "@/lib/user-scope";
@@ -39,28 +40,26 @@ export async function applyUserSession(payload: AuthSessionPayload) {
     const previousUserId = useUserStore.getState().user?.id || "";
     const nextUserId = payload.user?.id || "";
     useUserStore.getState().setHydrated(false);
+    // Query key 不携带用户 ID；身份变化时必须取消并清空旧账号请求，避免跨账号复用内存数据。
+    if (previousUserId !== nextUserId) appQueryClient.clear();
+    await switchUserStorageScope(payload.user?.id);
+    // 切换存储 scope 时 user store 仍保留旧身份；此处只能先检查 generation。
+    if (!isCurrentGeneration(generation)) return;
+    withCanvasStorePersistenceSuppressed(() => withAssetStorePersistenceSuppressed(() => withUserScopedPersistenceSuppressed(() => {
+        resetUserScopedMemory();
+    })));
+    useUserStore.getState().setUser(payload.user);
+    useUserStore.getState().setRuntimeLimits(payload.runtimeLimits);
+    useUserStore.getState().setDrawingEngine(payload.drawingEngine);
+    useUserStore.getState().setFeatures(payload.features);
+    installRemoteUserDataAutoSync();
     try {
-        // Query key 不携带用户 ID；身份变化时必须取消并清空旧账号请求，避免跨账号复用内存数据。
-        if (previousUserId !== nextUserId) appQueryClient.clear();
-        await switchUserStorageScope(payload.user?.id);
-        // 切换存储 scope 时 user store 仍保留旧身份；此处只能先检查 generation，
-        // 否则登录后的新用户会被误判为过期会话，hydrated 永远无法解除。
-        if (!isCurrentGeneration(generation)) return;
-        withCanvasStorePersistenceSuppressed(() => withAssetStorePersistenceSuppressed(() => withUserScopedPersistenceSuppressed(() => {
-            resetUserScopedMemory();
-        })));
-        useUserStore.getState().setUser(payload.user);
-        useUserStore.getState().setRuntimeLimits(payload.runtimeLimits);
-        useUserStore.getState().setDrawingEngine(payload.drawingEngine);
-        useUserStore.getState().setFeatures(payload.features);
-        installRemoteUserDataAutoSync();
-        const initialization = trackUserDataSessionInitialization(() => hydrateUserSessionData(payload, generation));
-        useUserStore.getState().setHydrated(true);
-        void initialization.catch((error) => {
-            if (isCurrentSession(generation, nextUserId)) console.warn("用户工作区后台初始化失败，基础页面仍可继续", error);
-        });
+        // 缓存恢复和同步基线必须先于工作区开放，防止生成/编辑抢跑，或被初始化误记为已同步。
+        await trackUserDataSessionInitialization(() => hydrateUserSessionData(payload, generation));
+    } catch (error) {
+        if (isCurrentSession(generation, nextUserId)) console.warn("用户工作区后台初始化失败，基础页面仍可继续", error);
     } finally {
-        if (useUserStore.getState().hydrated === false && isCurrentGeneration(generation)) useUserStore.getState().setHydrated(true);
+        if (isCurrentSession(generation, nextUserId)) useUserStore.getState().setHydrated(true);
     }
 }
 
@@ -263,6 +262,11 @@ export function projectLogicalCapability(spec: CapabilitySpec, defaults: Record<
         });
         projected.image.maxOutputs = maxNumericOption(spec.options?.count, 1);
         projected.image.transparentBackground = booleanOption(spec.options?.transparentBackground, defaults.transparentBackground);
+        if (spec.imageParameters)
+            projected.image = projectImageParameters(
+                projected.image,
+                imageParametersForSpec(spec).map((field) => ({ ...field, default: (defaults[field.name] as import("./image-parameters").ImageParameterValue | undefined) ?? field.default })),
+            );
     }
     if (spec.capability === "video" && projected.video) {
         projected.video.references.minImages = spec.inputs?.image?.min ?? 0;

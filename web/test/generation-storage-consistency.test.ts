@@ -2,12 +2,13 @@ import { expect, test } from "bun:test";
 
 type Scenario = "image-cleanup" | "scope-cleanup-switch" | "scope-cleanup-late-canvas-reference" | "video-commit-race" | "audio-commit-race" | "canvas-batch-commit-race" | "canvas-multi-output" | "canvas-copy-generation" | "canvas-remote-generation";
 
-test("云端确认的生成节点刷新后保留，本地未确认标记及跨账号标记仍被隔离", async () => {
-    const result = await runScenario<{ restored: string[]; protectedIds: string[]; isolated: string[]; connections: number }>("canvas-remote-generation");
+test("云端确认节点与新生成恢复节点保留，跨账号确认标记仍被隔离", async () => {
+    const result = await runScenario<{ restored: string[]; protectedIds: string[]; isolated: string[]; isolatedKeys: string[]; connections: number }>("canvas-remote-generation");
     expect(result.restored).toEqual(["image", "video", "audio", "text"]);
     expect(result.connections).toBe(1);
-    expect(result.protectedIds).toEqual(result.restored);
-    expect(result.isolated).toEqual(["image"]);
+    expect(result.protectedIds).toEqual([...result.restored, "pending", "copied-stamp"]);
+    expect(result.isolated).toEqual(result.restored);
+    expect(result.isolatedKeys).toEqual([]);
 });
 
 test("一次任务四图经真实消费链路堆叠并保存，刷新和重放保留四个独立资源", async () => {

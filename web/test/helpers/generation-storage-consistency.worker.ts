@@ -602,12 +602,13 @@ async function runRemoteGenerationRestore() {
         const protectedIds = useCanvasStore.getState().openProject(id)!.nodes.map((node) => node.id);
         setActiveUserScope("other-account");
         await useCanvasStore.persist.rehydrate();
-        useCanvasStore.setState({ projects: [base] });
+        useCanvasStore.setState({ projects: [{ ...base, nodes: remote.nodes.map((node) => ({ ...node, metadata: {} })) }] });
         await flushCanvasStorePersistence();
         useCanvasStore.setState({ projects: [remote] });
         await flushCanvasStorePersistence();
         await useCanvasStore.persist.rehydrate();
-        return { restored, protectedIds, isolated: useCanvasStore.getState().openProject(id)!.nodes.map((node) => node.id), connections: restoredProject.connections.length };
+        const isolatedProject = useCanvasStore.getState().openProject(id)!;
+        return { restored, protectedIds, isolated: isolatedProject.nodes.map((node) => node.id), isolatedKeys: isolatedProject.nodes.flatMap((node) => node.metadata?.generationEffectKeys || []), connections: restoredProject.connections.length };
     } finally {
         setActiveUserScope(previousScope);
         harness.restore();

@@ -6,8 +6,8 @@ import { isRetryableCanvasSyncError } from "@/lib/canvas/canvas-sync-error";
 import { useSyncProgressStore } from "@/stores/use-sync-progress-store";
 
 describe("本地已保存、云端同步失败的文案", () => {
-    test("只有暂时性错误提示有限重试", () => {
-        expect(formatLocalSavedRemotePending("素材已在本地保存", new ApiError("网络中断", { retryable: true }))).toBe("素材已在本地保存，云端同步失败：网络中断。将有限重试，也可手动重试。");
+    test("只有暂时性错误提示自动重试", () => {
+        expect(formatLocalSavedRemotePending("素材已在本地保存", new ApiError("网络中断", { retryable: true }))).toBe("素材已在本地保存，云端同步失败：网络中断。将自动重试，也可手动重试。");
     });
 
     test("没有 Error.message 时使用未知错误", () => {

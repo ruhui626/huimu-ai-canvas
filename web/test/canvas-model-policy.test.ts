@@ -226,7 +226,7 @@ describe("逻辑模型选择", () => {
             model,
         };
 
-        expect(defaultImageParamsForModel(config, model)).toEqual({ size: "16:9", quality: "2k", transparentBackground: "true", count: "2" });
+        expect(defaultImageParamsForModel(config, model)).toEqual({ size: "16:9", imageResolution: "auto", imageParameters: "{}", quality: "2k", transparentBackground: "true", count: "2" });
     });
 
     test("后台视频默认时长优先于旧的全局 6 秒配置", () => {
