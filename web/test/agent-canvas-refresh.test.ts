@@ -139,6 +139,27 @@ test("unsaved editor conflicts preserve store and acknowledged baseline", async 
     expect(useCanvasStore.getState().projects[0]).toMatchObject(remote);
 });
 
+test("draft backup failure preserves the original conflict and recovery state", async () => {
+    await setup();
+    unsubscribe = subscribeAgentCanvasRefresh(() => { throw new Error("本地编辑冲突"); });
+    const setItem = localforage.setItem;
+    localforage.setItem = (async (key: string, value: unknown) => {
+        if (key.includes("sync-draft")) throw new Error("quota exceeded");
+        return setItem.call(localforage, key, value);
+    }) as typeof localforage.setItem;
+    const warning = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+        await expect(refreshCanvasAfterAgent(initial.id)).rejects.toThrow("本地编辑冲突");
+        expect(useCanvasStore.getState().projects[0]).toEqual(initial);
+        expect(useSyncProgressStore.getState().syncingProjects[initial.id]).toMatchObject({ phase: "pending", pendingChanges: 1 });
+        expect(useSyncProgressStore.getState().syncingProjects[initial.id].message).toContain("草稿备份失败");
+        expect(warning).toHaveBeenCalled();
+    } finally {
+        localforage.setItem = setItem;
+        warning.mockRestore();
+    }
+});
+
 test("dirty persisted edits are rebased when Agent changes different fields", async () => {
     await setup();
     useCanvasStore.setState({ projects: [{ ...initial, title: "本地修改" }] });
@@ -354,14 +375,14 @@ test("reconciliation after a delta gap still protects genuinely conflicting edit
 
 test("an identical cloud snapshot clears a stale conflict without replaying editor nodes", async () => {
     await setup(initial);
-    useSyncProgressStore.getState().setProjectProgress(initial.id, { phase: "conflict", draftCount: 9 });
+    useSyncProgressStore.getState().setProjectProgress(initial.id, { phase: "error", errorKind: "conflict" });
     let deliveries = 0;
     unsubscribe = subscribeAgentCanvasRefresh(() => {
         deliveries++;
     });
     await refreshCanvasAfterAgent(initial.id);
     expect(deliveries).toBe(0);
-    expect(useSyncProgressStore.getState().syncingProjects[initial.id]).toMatchObject({ phase: "done", draftCount: 9 });
+    expect(useSyncProgressStore.getState().syncingProjects[initial.id]).toMatchObject({ phase: "done" });
     await expect(saveRemoteUserDataNow(initial.id)).resolves.toBeUndefined();
 });
 

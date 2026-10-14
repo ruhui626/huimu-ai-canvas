@@ -8,10 +8,7 @@ export type SyncProjectProgress = {
     completed: number;
     phase: "local" | "pending" | "uploading" | "saving" | "done" | "error";
     message?: string;
-    draftCount?: number;
-    localDraftSaved?: boolean;
     retryable?: boolean;
-    retryScheduled?: boolean;
     errorKind?: "local" | "network" | "conflict" | "resources";
     localPhase?: LocalCanvasPersistencePhase;
     localSavedAt?: string;
@@ -49,7 +46,7 @@ export const useSyncProgressStore = create<SyncProgressStore>((set, get) => ({
                     ...state.syncingProjects,
                     [projectId]: {
                         ...current,
-                        ...(patch.phase && patch.phase !== "error" ? { localDraftSaved: false, retryable: false, retryScheduled: false } : {}),
+                        ...(patch.phase && patch.phase !== "error" ? { retryable: false } : {}),
                         ...patch,
                     },
                 },

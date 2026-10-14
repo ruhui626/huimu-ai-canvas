@@ -21,11 +21,11 @@ describe("本地已保存、云端同步失败的文案", () => {
         expect(isRetryableCanvasSyncError({ permanent: false })).toBe(true);
         expect(isRetryableCanvasSyncError({ permanent: true })).toBe(false);
     });
-    test("新一轮修改清除旧草稿确认和重试状态", () => {
+    test("新一轮修改清除旧错误重试状态", () => {
         const store = useSyncProgressStore.getState();
-        store.setProjectProgress("test", { phase: "error", localDraftSaved: true, retryable: true, retryScheduled: true });
+        store.setProjectProgress("test", { phase: "error", retryable: true });
         store.setProjectProgress("test", { phase: "pending" });
-        expect(useSyncProgressStore.getState().syncingProjects.test).toMatchObject({ localDraftSaved: false, retryable: false, retryScheduled: false });
+        expect(useSyncProgressStore.getState().syncingProjects.test).toMatchObject({ retryable: false });
         store.clearAll();
     });
 });

@@ -39,7 +39,7 @@ export const appQueryClient = { invalidateQueries: async () => {} };
 export const repairMissingCanvasAssets = () => ({ createdAssets: 0, updatedProjects: 0 });
 export const clearRemoteCanvasGenerationKeys = () => {};
 export const confirmRemoteCanvasGenerationKeys = () => {};
-export const loadMissingCanvasGenerationAssets = async () => {};
+export const loadMissingCanvasGenerationAssets = async ids => { for (const id of ids) { const error = fixture.repairErrors?.get(id); if (error) throw error; } };
 export const normalizeManagedImageAssetList = value => value;
 export const preserveCanvasSyncDraft = async () => 0;
 export const isRetryableCanvasSyncError = error => error instanceof ApiError && error.retryable;
@@ -109,6 +109,7 @@ beforeEach(async () => {
     fixture.writes = [];
     fixture.reads = fixture.flushes = 0;
     fixture.beforeFlush = fixture.readHook = fixture.flushError = undefined;
+    fixture.repairErrors = new Map();
     useCanvasStore.setState({ projects: [base()] });
     await sync.initializeRemoteUserDataSession("sync-test-user");
 });
@@ -119,6 +120,18 @@ afterAll(() => {
 });
 
 describe("画布云端同步状态收尾", () => {
+    test("旧任务恢复失败只阻止所属画布，其他画布仍保存且失败不被吞掉", async () => {
+        const broken = { ...base(), id: "broken", title: "缺失任务" };
+        fixture.repairErrors.set("broken", new Error("task missing"));
+        useCanvasStore.setState({ projects: [broken, { ...base(), title: "正常修改" }] });
+        await expect(sync.saveRemoteUserDataNow()).rejects.toThrow("task missing");
+        expect(fixture.remote.title).toBe("正常修改");
+        expect(fixture.writes).toHaveLength(1);
+        expect(useSyncProgressStore.getState().syncingProjects.canvas.phase).toBe("done");
+        expect(useSyncProgressStore.getState().syncingProjects.broken).toMatchObject({ phase: "error", errorKind: "resources", pendingChanges: 1, retryable: false });
+        expect(useCanvasStore.getState().openProject("broken")).toEqual(broken);
+    });
+
     test("资源地址差异产生空操作时结束同步，后续保存不再重复处理", async () => {
         useCanvasStore.setState({ projects: [withCdnUrl()] });
         await sync.saveRemoteUserDataNow("canvas");
