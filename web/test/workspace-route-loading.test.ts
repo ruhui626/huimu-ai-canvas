@@ -24,8 +24,7 @@ describe("workspace route loading", () => {
         for (const route of ["projects", "canvas", "assets", "create"]) {
             expect(modules).toContain(`${route}: () => import`);
         }
-        expect(modules).toContain('quickVideo: () => import("@/pages/quick-video")');
-        expect(modules).toContain('slug === "tools" && segments[1] === "quick-video"');
+        expect(modules).not.toContain("quickVideo");
         expect(modules).toContain('projectDetail: () => import("@/pages/projects/detail")');
         expect(modules).toContain('slug === "projects" && segments.length > 1');
         expect(navigation).toContain("onPointerEnter={() => preloadWorkspaceRoute(linkTo)}");
@@ -41,7 +40,8 @@ describe("workspace route loading", () => {
         expect(router).toContain('{ path: "/create", element: <RequireAuth>{deferred(<CreatePage />)}</RequireAuth> }');
         expect(router).not.toContain('path: "/inspirations"');
         expect(source("../src/pages/create/index.tsx")).toContain("Inspiration");
-        expect(router).toContain('{ path: "/tools/quick-video", element: <RequireAuth>{deferred(<QuickVideoPage />)}</RequireAuth> }');
+        expect(router).not.toContain("QuickVideoPage");
+        expect(router).not.toContain("/tools/quick-video");
         expect(router).toContain('{ path: "/assets", element: <RequireAuth>{deferred(<AssetsPage />)}</RequireAuth> }');
         expect(router).toMatch(/path: "\/canvas\/:id",\s+element: \(\s+<RequireAuth>\s+<CanvasProjectPage \/>\s+<\/RequireAuth>\s+\),/);
         expect(router).not.toContain('path: "/home"');
@@ -49,7 +49,8 @@ describe("workspace route loading", () => {
         expect(navigation).toContain('{ ...toolItem("create", "/"), id: "home", title: "创作" }');
         expect(navigation).not.toContain('to: "/create"');
         expect(navigation).not.toContain('to: "/home"');
-        expect(navigation).toContain('{ ...toolItem("quick-video", "/tools/quick-video"), title: "常用工具" }');
+        expect(navigation).not.toContain("常用工具");
+        expect(source("../src/constant/navigation-tools.ts")).not.toContain("quick-video");
     });
 
     test("preloads canvas detail and paints opening feedback before navigation", () => {
