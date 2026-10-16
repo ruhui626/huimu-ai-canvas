@@ -67,7 +67,7 @@ if ([string]::IsNullOrWhiteSpace($env:GOPROXY)) {
     $env:GOPROXY = "https://goproxy.cn,direct"
 }
 
-$env:CANVAS_BACKEND_DATA_DIR = Join-Path $projectRoot ".local\project-workbench-debug"
+$env:CANVAS_BACKEND_DATA_DIR = Join-Path $projectRoot ".local\project-workbench-restored-debug"
 $env:CANVAS_BACKEND_ADDR = "127.0.0.1:8080"
 $env:CANVAS_DATABASE_DRIVER = "sqlite"
 Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
