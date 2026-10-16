@@ -15,6 +15,7 @@ import {
     normalizeAudioVoiceForConfig,
     normalizeAudioFormatForConfig,
     normalizeAudioVoiceValue,
+    normalizeAudioSpeedValue,
 } from "../src/lib/audio-generation";
 
 const config = (protocol: string) =>
@@ -94,6 +95,22 @@ test("高级音频设置经过画布合同保存回读后保留，默认采样�
     const spec = specFromConfig("audio", "你好", { ...defaultConfig, audioSampleRate: "", audioPitch: "-2", audioVolume: "1.25" });
     const metadata = generationSpecMetadata(validateGenerationSpec(JSON.parse(JSON.stringify(spec))));
     expect(metadata).toMatchObject({ audioSampleRate: "", audioPitch: "-2", audioVolume: "1.25" });
+});
+
+describe("audio speed normalization", () => {
+    test("uses normal speed for missing or blank values", () => {
+        for (const value of ["", "   ", undefined, null, "invalid"]) {
+            expect(normalizeAudioSpeedValue(value as any)).toBe("1");
+        }
+    });
+
+    test("preserves explicit speeds and clamps numeric limits", () => {
+        expect(normalizeAudioSpeedValue("0.8")).toBe("0.8");
+        expect(normalizeAudioSpeedValue("1")).toBe("1");
+        expect(normalizeAudioSpeedValue("1.25")).toBe("1.25");
+        expect(normalizeAudioSpeedValue("0")).toBe("0.25");
+        expect(normalizeAudioSpeedValue("5")).toBe("4");
+    });
 });
 
 describe("audio voice protocol handling", () => {
